@@ -1,0 +1,19 @@
+use rx::core::*;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn shorten_where<'long,'short>(value: &'long i32) -> &'short i32
+where
+    'long: 'short,
+{
+    return;
+}
+fn main() -> () {
+    let x: i32 = 1;
+    z=(x*x)+x%x*x+(x>>x<<x>>x);
+    return;
+}
