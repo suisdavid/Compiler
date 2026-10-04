@@ -1,6 +1,7 @@
 from dataclasses import dataclass,field
 
 def parseIntegerLiteral(s:str):
+    s=s.replace("_","")
     val=0
     type=''
     if s.endswith('i32'):
@@ -11,10 +12,10 @@ def parseIntegerLiteral(s:str):
         type='u32'
     elif s.endswith('isize'):
         s=s[:-5]
-        type='i32'
+        type='isize'
     elif s.endswith('usize'):
         s=s[:-5]
-        type='u32'
+        type='usize'
     if s.startswith("0b"):
         val=int(s,2)
     elif s.startswith('0o'):
@@ -54,12 +55,7 @@ class ReferenceType(TypeRef):
 @dataclass
 class ArrayType(TypeRef):
     inner: TypeRef
-    length: int
-    pass
-
-@dataclass
-class BlockExpression:
-    pass
+    length: ConstValue
 
 @dataclass
 class Item:#base class
@@ -95,14 +91,6 @@ class FunctionParameters:
     parameters: list[FunctionParam]
 
 
-@dataclass
-class FunctionDefinition(Item):
-    identifier: str
-    #genericParams: GenericParams
-    functionParameters: FunctionParameters
-    typeref: TypeRef
-    #whereClause: WhereClause
-    blockExpression: BlockExpression
 
 
 @dataclass
@@ -133,7 +121,7 @@ class Expression:
 class StructExprField:
     identifier: str
     expression: Expression
-    pass
+    
 @dataclass 
 class ConditionExpression(Expression):
     pass
@@ -143,17 +131,26 @@ class ConditionUnaryExpression(Expression):
     pass
 
 @dataclass
-class PrimitiveExpression(Expression):
+class Statement:
+    pass
+
+@dataclass
+class NonLetStatement(Statement):
+    semi:bool
+    expression: Expression
+
+@dataclass
+class StatementExpression(Expression):
+    pass
+
+@dataclass
+class PrimitiveExpression(StatementExpression):
     op: str
     expressions: list[Expression]
 
 @dataclass
 class ExtraExpression(PrimitiveExpression):
     ops: list[str]
-
-@dataclass
-class Statement:
-    pass
 
 @dataclass
 class PrimaryExpression(Expression):
@@ -212,10 +209,6 @@ class CastExpression(Expression):
 
 @dataclass
 class ExpressionWithBlock(PrimaryExpression):
-    pass
-
-@dataclass
-class StructExprField:
     pass
 
 @dataclass 
@@ -284,9 +277,6 @@ class RepeatArrayExpression(Expression):
     expression: Expression
     length: ConstValue
 
-@dataclass
-class StatementExpression(Statement):
-    pass
 
 @dataclass
 class LetStatement(Statement):
@@ -295,6 +285,15 @@ class LetStatement(Statement):
     typeRef: TypeRef
     value: Expression
 
+
+@dataclass
+class FunctionDefinition(Item):
+    identifier: str
+    #genericParams: GenericParams
+    functionParameters: FunctionParameters
+    typeref: TypeRef
+    #whereClause: WhereClause
+    blockExpression: BlockExpression
 
 @dataclass
 class Crate:

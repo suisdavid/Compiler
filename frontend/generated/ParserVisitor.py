@@ -172,7 +172,7 @@ class ParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by Parser#arrayType.
     def visitArrayType(self, ctx:Parser.ArrayTypeContext):
-        return ast_nodes.ArrayType(inner=self.visit(ctx.typeRef()),length=self.visit(ctx.constValue()).toInt())
+        return ast_nodes.ArrayType(inner=self.visit(ctx.typeRef()),length=self.visit(ctx.constValue()))
 
 
     # Visit a parse tree produced by Parser#typePath.
@@ -255,11 +255,11 @@ class ParserVisitor(ParseTreeVisitor):
         elif ctx.MINUS():
             val=self.visit(ctx.magnitude())
             if isinstance(val,str):
-                return ast_nodes.ConstValue(minus=True,value=None,pathInExpression=val)
+                return ast_nodes.ConstValue(minus=True,type='',value=None,pathInExpression=val)
             else:
                 return ast_nodes.ConstValue(minus=True,value=val[0],type=val[1],pathInExpression=None)
         else:
-            return ast_nodes.ConstValue(value=None, pathInExression=self.visit(ctx.pathInExpression()))
+            return ast_nodes.ConstValue(value=None,type='', pathInExpression=self.visit(ctx.pathInExpression()))
     
     
     # Visit a parse tree produced by Parser#magnitude.
@@ -293,11 +293,11 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.letStatement():
             return self.visit(ctx.letStatement())
         elif ctx.expressionWithBlock():
-            return self.visit(ctx.expressionWithBlock())
+            return ast_nodes.NonLetStatement(semi=True if ctx.SEMI() else False,expression=self.visit(ctx.expressionWithBlock()))
         elif ctx.statementExpression():
-            return self.visit(ctx.statementExpression())
+            return ast_nodes.NonLetStatement(semi=True,expression=self.visit(ctx.statementExpression()))
         else:
-            return ast_nodes.Statement()
+            return ast_nodes.NonLetStatement(semi=True,expression=None)
 
 
     # Visit a parse tree produced by Parser#expressionWithBlock.
@@ -305,7 +305,7 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.ifExpression():
             return self.visit(ctx.ifExpression())
         else:
-            return ast_nodes.ExpressionWithBlock(blockExpression=ctx.blockExpression(),loop=ctx.LOOP() or ctx.WHILE(),conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)
+            return ast_nodes.NormalExpressionWithBlock(blockExpression=ctx.blockExpression(),loop=ctx.LOOP() or ctx.WHILE(),conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)
 
 
     # Visit a parse tree produced by Parser#ifExpression.
@@ -353,9 +353,9 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#comparisonExpression.
     def visitComparisonExpression(self, ctx:Parser.ComparisonExpressionContext):
         if ctx.LT():
-            ast_nodes.PrimitiveExpression(op="<",expressions=[self.visit(ctx.closedBitOrExpression()),self.visit(ctx.bitOrExpression(0))])
+            return ast_nodes.PrimitiveExpression(op="<",expressions=[self.visit(ctx.closedBitOrExpression()),self.visit(ctx.bitOrExpression(0))])
         elif ctx.comparisonExceptLt():
-            ast_nodes.PrimitiveExpression(op=self.visit(ctx.comparisonExceptLt()),expressions=[self.visit(ctx.bitOrExpression(0)),self.visit(ctx.bitOrExpression(1))])
+            return ast_nodes.PrimitiveExpression(op=self.visit(ctx.comparisonExceptLt()),expressions=[self.visit(ctx.bitOrExpression(0)),self.visit(ctx.bitOrExpression(1))])
         else:
             return self.visit(ctx.bitOrExpression(0))
 
@@ -613,7 +613,7 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#conditionAdditiveExpression.
     def visitConditionAdditiveExpression(self, ctx:Parser.ConditionAdditiveExpressionContext):
         if len(ctx.conditionMultiplicativeExpression())>1:
-            return ast_nodes.ExtraExpression(op="+",expressions=[self.visit(ctx.conditionMultiplicativeExpression(i)) for i in range(len(ctx.conditionMultiplicativeExpression()))],ops=['+']+[self.visit(ctx.additiveOperator(i)) for i in range(len(ctx.conditionMultiplicativeExpression()))])
+            return ast_nodes.ExtraExpression(op="+",expressions=[self.visit(ctx.conditionMultiplicativeExpression(i)) for i in range(len(ctx.conditionMultiplicativeExpression()))],ops=['+']+[self.visit(ctx.additiveOperator(i)) for i in range(len(ctx.additiveOperator()))])
         else:
             return self.visit(ctx.conditionMultiplicativeExpression(0))
 
@@ -638,7 +638,7 @@ class ParserVisitor(ParseTreeVisitor):
     def visitConditionClosedMultiplicativeExpression(self, ctx:Parser.ConditionClosedMultiplicativeExpressionContext):
         if len(ctx.conditionCastExpression())==0:
             return self.visit(ctx.conditionClosedCastExpression())
-        return ast_nodes.ExtraExpression(op="*",expressions=[self.visit(ctx.conditionClosedCastExpression(i)) for i in range(len(ctx.conditionCastExpression()))]+[self.visit(ctx.conditionClosedCastExpression())],ops=['*']+[self.visit(ctx.multiplicativeOperator(i)) for i in range(len(ctx.multiplicativeOperator()))])
+        return ast_nodes.ExtraExpression(op="*",expressions=[self.visit(ctx.conditionCastExpression(i)) for i in range(len(ctx.conditionCastExpression()))]+[self.visit(ctx.conditionClosedCastExpression())],ops=['*']+[self.visit(ctx.multiplicativeOperator(i)) for i in range(len(ctx.multiplicativeOperator()))])
                        
         
     # Visit a parse tree produced by Parser#conditionCastExpression.
@@ -671,84 +671,87 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#conditionBreakAssignmentExpression.
     def visitConditionBreakAssignmentExpression(self, ctx:Parser.ConditionBreakAssignmentExpressionContext):#treat like normal expression first
         if ctx.assignmentOperator():
-            return ast_nodes.PrimitiveExpression(op=self.visit(ctx.assignmentOperator()),expressions=[self.visit(ctx.conditionBreakLogicalOrExpression()),self.visit(ctx.conditionBreakExpression())])
+            return ast_nodes.PrimitiveExpression(op=self.visit(ctx.assignmentOperator()),expressions=[self.visit(ctx.conditionBreakLogicalOrExpression()),self.visit(ctx.conditionExpression())])
         else:
             return self.visit(ctx.conditionBreakLogicalOrExpression())
 
 
     # Visit a parse tree produced by Parser#conditionBreakLogicalOrExpression.
     def visitConditionBreakLogicalOrExpression(self, ctx:Parser.ConditionBreakLogicalOrExpressionContext):
-        if len(ctx.conditionBreakLogicalAndExpression())>1:
-            return ast_nodes.PrimitiveExpression(op="or",expressions=[self.visit(ctx.conditionBreakLogicalAndExpression(i)) for i in range(len(ctx.conditionBreakLogicalAndExpression()))])
+        if len(ctx.conditionLogicalAndExpression())>0:
+            return ast_nodes.PrimitiveExpression(op="or",expressions=[self.visit(ctx.conditionBreakLogicalAndExpression())]+[self.visit(ctx.conditionLogicalAndExpression(i)) for i in range(len(ctx.conditionLogicalAndExpression()))])
         else:
-            return self.visit(ctx.conditionBreakLogicalAndExpression(0))
+            return self.visit(ctx.conditionBreakLogicalAndExpression())
 
 
     # Visit a parse tree produced by Parser#conditionBreakLogicalAndExpression.
     def visitConditionBreakLogicalAndExpression(self, ctx:Parser.ConditionBreakLogicalAndExpressionContext):
-        if len(ctx.conditionBreakComparisonExpression())>1:
-            return ast_nodes.PrimitiveExpression(op="and",expressions=[self.visit(ctx.conditionBreakComparisonExpression(i)) for i in range(len(ctx.conditionBreakComparisonExpression()))])
+        if len(ctx.conditionComparisonExpression())>0:
+            return ast_nodes.PrimitiveExpression(op="and",expressions=[self.visit(ctx.conditionBreakComparisonExpression())]+[self.visit(ctx.conditionComparisonExpression(i)) for i in range(len(ctx.conditionComparisonExpression()))])
         else:
-            return self.visit(ctx.conditionBreakComparisonExpression(0))
+            return self.visit(ctx.conditionBreakComparisonExpression())
 
 
     # Visit a parse tree produced by Parser#conditionBreakComparisonExpression.
     def visitConditionBreakComparisonExpression(self, ctx:Parser.ConditionBreakComparisonExpressionContext):
         if ctx.LT():
-            return ast_nodes.PrimitiveExpression(op="<",expressions=[self.visit(ctx.conditionBreakClosedBitOrExpression()),self.visit(ctx.conditionBreakBitOrExpression(0))])
+            return ast_nodes.PrimitiveExpression(op="<",expressions=[self.visit(ctx.conditionBreakClosedBitOrExpression()),self.visit(ctx.conditionBitOrExpression())])
         elif ctx.comparisonExceptLt():
-            return ast_nodes.PrimitiveExpression(op=self.visit(ctx.comparisonExceptLt()),expressions=[self.visit(ctx.conditionBreakBitOrExpression(0)),self.visit(ctx.conditionBreakBitOrExpression(1))])
+            return ast_nodes.PrimitiveExpression(op=self.visit(ctx.comparisonExceptLt()),expressions=[self.visit(ctx.conditionBreakBitOrExpression()),self.visit(ctx.conditionBitOrExpression())])
         else:
-            return self.visit(ctx.conditionBreakBitOrExpression(0))
+            return self.visit(ctx.conditionBreakBitOrExpression())
 
 
     # Visit a parse tree produced by Parser#conditionBreakBitOrExpression.
     def visitConditionBreakBitOrExpression(self, ctx:Parser.ConditionBreakBitOrExpressionContext):
-        if len(ctx.conditionBreakBitXorExpression())>1:
-            return ast_nodes.PrimitiveExpression(op="|",expressions=[self.visit(ctx.conditionBreakBitXorExpression(i)) for i in range(len(ctx.conditionBreakBitXorExpression()))])
+        if len(ctx.conditionBitXorExpression())>0:
+            return ast_nodes.PrimitiveExpression(op="|",expressions=[self.visit(ctx.conditionBreakBitXorExpression())]+[self.visit(ctx.conditionBitXorExpression(i)) for i in range(len(ctx.conditionBitXorExpression()))])
         else:
-            return self.visit(ctx.conditionBreakBitXorExpression(0))
+            return self.visit(ctx.conditionBreakBitXorExpression())
 
 
     # Visit a parse tree produced by Parser#conditionBreakClosedBitOrExpression.
     def visitConditionBreakClosedBitOrExpression(self, ctx:Parser.ConditionBreakClosedBitOrExpressionContext):
-        if len(ctx.conditionBreakBitXorExpression())==0:
-                return self.visit(ctx.conditionBreakClosedBitXorExpression())
-        return ast_nodes.PrimitiveExpression(op="|",expressions=[self.visit(ctx.conditionBreakBitXorExpression(i)) for i in range(len(ctx.conditionBreakBitXorExpression()))]+[self.visit(ctx.conditionBreakClosedBitXorExpression())])
+        if ctx.conditionBreakClosedBitXorExpression():
+            return self.visit(ctx.conditionBreakClosedBitXorExpression())
+        else:
+            return ast_nodes.PrimitiveExpression(op="|",expressions=[self.visit(ctx.conditionBreakBitXorExpression())]+ [self.visit(ctx.conditionBitXorExpression(i)) for i in range(len(ctx.conditionBitXorExpression()))]+[self.visit(ctx.conditionClosedBitXorExpression())])
         
 
 
     # Visit a parse tree produced by Parser#conditionBreakBitXorExpression.
     def visitConditionBreakBitXorExpression(self, ctx:Parser.ConditionBreakBitXorExpressionContext):
-        if len(ctx.conditionBreakBitAndExpression())>1:
-            return ast_nodes.PrimitiveExpression(op="^",expressions=[self.visit(ctx.conditionBreakBitAndExpression(i)) for i in range(len(ctx.conditionBreakBitAndExpression()))])
+        if len(ctx.conditionBitAndExpression())>0:
+            return ast_nodes.PrimitiveExpression(op="^",expressions=[self.visit(ctx.conditionBreakBitAndExpression())]+[self.visit(ctx.conditionBitAndExpression(i)) for i in range(len(ctx.conditionBitAndExpression()))])
         else:
-            return self.visit(ctx.conditionBreakBitAndExpression(0))
+            return self.visit(ctx.conditionBreakBitAndExpression())
 
 
     # Visit a parse tree produced by Parser#conditionBreakClosedBitXorExpression.
     def visitConditionBreakClosedBitXorExpression(self, ctx:Parser.ConditionBreakClosedBitXorExpressionContext):
-        if len(ctx.conditionBreakBitAndExpression())==0:
-                return self.visit(ctx.conditionBreakClosedBitAndExpression())
-        return ast_nodes.PrimitiveExpression(op="^",expressions=[self.visit(ctx.conditionBreakBitAndExpression(i)) for i in range(len(ctx.conditionBreakBitAndExpression()))]+[self.visit(ctx.conditionBreakClosedBitAndExpression())])
+        if ctx.conditionBreakClosedBitAndExpression():
+            return self.visit(ctx.conditionBreakClosedBitAndExpression())
+        else:
+            return ast_nodes.PrimitiveExpression(op="^",expressions=[self.visit(ctx.conditionBreakBitAndExpression())]+ [self.visit(ctx.conditionBitAndExpression(i)) for i in range(len(ctx.conditionBitAndExpression()))]+[self.visit(ctx.conditionClosedBitAndExpression())])
+                
         
 
 
     # Visit a parse tree produced by Parser#conditionBreakBitAndExpression.
     def visitConditionBreakBitAndExpression(self, ctx:Parser.ConditionBreakBitAndExpressionContext):
-        if len(ctx.conditionBreakShiftExpression())>1:
-            return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.conditionBreakShiftExpression(i)) for i in range(len(ctx.conditionBreakShiftExpression()))])
+        if len(ctx.conditionShiftExpression())>0:
+            return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.conditionBreakShiftExpression())]+[self.visit(ctx.conditionShiftExpression(i)) for i in range(len(ctx.conditionShiftExpression()))])
         else:
-            return self.visit(ctx.conditionBreakShiftExpression(0))
+            return self.visit(ctx.conditionBreakShiftExpression())
 
 
     # Visit a parse tree produced by Parser#conditionBreakClosedBitAndExpression.
     def visitConditionBreakClosedBitAndExpression(self, ctx:Parser.ConditionBreakClosedBitAndExpressionContext):
-        if len(ctx.conditionBreakShiftExpression())==0:
+        if ctx.conditionBreakClosedShiftExpression():
             return self.visit(ctx.conditionBreakClosedShiftExpression())
-        return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.conditionBreakShiftExpression(i)) for i in range(len(ctx.conditionBreakShiftExpression()))]+[self.visit(ctx.conditionBreakClosedShiftExpression())])
-    
-
+        else:
+            return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.conditionBreakShiftExpression())]+ [self.visit(ctx.conditionShiftExpression(i)) for i in range(len(ctx.conditionShiftExpression()))]+[self.visit(ctx.conditionClosedShiftExpression())])
+                    
 
     # Visit a parse tree produced by Parser#conditionBreakShiftExpression.
     def visitConditionBreakShiftExpression(self, ctx:Parser.ConditionBreakShiftExpressionContext):
@@ -761,7 +764,7 @@ class ParserVisitor(ParseTreeVisitor):
             expressions.append(self.visit(ctx.getChild(ctx.getChildCount()-1)))
             return ast_nodes.ExtraExpression(op='shift',expressions=expressions,ops=ops)
         else:
-            return self.visit(ctx.conditionBreakAdditiveExpression(0))
+            return self.visit(ctx.conditionBreakAdditiveExpression())
 
 
     # Visit a parse tree produced by Parser#conditionBreakClosedShiftExpression.
@@ -775,39 +778,44 @@ class ParserVisitor(ParseTreeVisitor):
             expressions.append(self.visit(ctx.getChild(ctx.getChildCount()-1)))
             return ast_nodes.ExtraExpression(op='shift',expressions=expressions,ops=ops)
         else:
-            return self.visit(ctx.conditionBreakClosedAdditiveExpression(0))
+            return self.visit(ctx.conditionBreakClosedAdditiveExpression())
 
 
     # Visit a parse tree produced by Parser#conditionBreakAdditiveExpression.
     def visitConditionBreakAdditiveExpression(self, ctx:Parser.ConditionBreakAdditiveExpressionContext):
-        if len(ctx.conditionBreakMultiplicativeExpression())>1:
-            return ast_nodes.ExtraExpression(op="+",expressions=[self.visit(ctx.conditionBreakMultiplicativeExpression(i)) for i in range(len(ctx.conditionBreakMultiplicativeExpression()))],ops=['+']+[self.visit(ctx.additiveOperator(i)) for i in range(len(ctx.conditionBreakMultiplicativeExpression()))])
+        if len(ctx.conditionMultiplicativeExpression())>0:
+            return ast_nodes.ExtraExpression(op="+",expressions=[self.visit(ctx.conditionBreakMultiplicativeExpression())]+[self.visit(ctx.conditionMultiplicativeExpression(i)) for i in range(len(ctx.conditionMultiplicativeExpression()))],ops=['+']+[self.visit(ctx.additiveOperator(i)) for i in range(len(ctx.additiveOperator()))])
         else:
-            return self.visit(ctx.conditionBreakMultiplicativeExpression(0))
+            return self.visit(ctx.conditionBreakMultiplicativeExpression())
+        
 
 
     # Visit a parse tree produced by Parser#conditionBreakClosedAdditiveExpression.
     def visitConditionBreakClosedAdditiveExpression(self, ctx:Parser.ConditionBreakClosedAdditiveExpressionContext):
-        if len(ctx.conditionBreakMultiplicativeExpression())==0:
+        if ctx.conditionBreakClosedMultiplicativeExpression():
             return self.visit(ctx.conditionBreakClosedMultiplicativeExpression())
-        return ast_nodes.ExtraExpression(op="+",expressions=[self.visit(ctx.conditionBreakMultiplicativeExpression(i)) for i in range(len(ctx.conditionBreakMultiplicativeExpression()))]+[self.visit(ctx.conditionBreakClosedMultiplicativeExpression())],ops=['+']+[self.visit(ctx.additiveOperator(i)) for i in range(len(ctx.additiveOperator()))])
-               
-
+        else:
+            return ast_nodes.ExtraExpression(op="+",expressions=[self.visit(ctx.conditionBreakMultiplicativeExpression())]+ [self.visit(ctx.conditionMultiplicativeExpression(i)) for i in range(len(ctx.conditionMultiplicativeExpression()))]+[self.visit(ctx.conditionClosedMultiplicativeExpression())],ops=['+']+[self.visit(ctx.additiveOperator(i)) for i in range(len(ctx.additiveOperator()))])
+                            
+        
 
     # Visit a parse tree produced by Parser#conditionBreakMultiplicativeExpression.
     def visitConditionBreakMultiplicativeExpression(self, ctx:Parser.ConditionBreakMultiplicativeExpressionContext):
-        if len(ctx.conditionBreakCastExpression())>1:
-            return ast_nodes.ExtraExpression(op="*",expressions=[self.visit(ctx.conditionBreakCastExpression(i)) for i in range(len(ctx.conditionBreakCastExpression()))],ops=['*']+[self.visit(ctx.multiplicativeOperator(i)) for i in range(len(ctx.multiplicativeOperator()))])
+        if len(ctx.conditionCastExpression())>0:
+            return ast_nodes.ExtraExpression(op="*",expressions=[self.visit(ctx.conditionBreakCastExpression())]+[self.visit(ctx.conditionCastExpression(i)) for i in range(len(ctx.conditionCastExpression()))],ops=['*']+[self.visit(ctx.multiplicativeOperator(i)) for i in range(len(ctx.multiplicativeOperator()))])
         else:
-            return self.visit(ctx.conditionBreakCastExpression(0))
+            return self.visit(ctx.conditionBreakCastExpression())
+                
+        
 
 
     # Visit a parse tree produced by Parser#conditionBreakClosedMultiplicativeExpression.
     def visitConditionBreakClosedMultiplicativeExpression(self, ctx:Parser.ConditionBreakClosedMultiplicativeExpressionContext):
-        if len(ctx.conditionBreakCastExpression())==0:
+        if ctx.conditionBreakClosedCastExpression():
             return self.visit(ctx.conditionBreakClosedCastExpression())
-        return ast_nodes.ExtraExpression(op="*",expressions=[self.visit(ctx.conditionBreakClosedCastExpression(i)) for i in range(len(ctx.conditionBreakCastExpression()))]+[self.visit(ctx.conditionBreakClosedCastExpression())],ops=['*']+[self.visit(ctx.multiplicativeOperator(i)) for i in range(len(ctx.multiplicativeOperator()))])
-                       
+        else:
+            return ast_nodes.ExtraExpression(op="*",expressions=[self.visit(ctx.conditionBreakCastExpression())]+ [self.visit(ctx.conditionCastExpression(i)) for i in range(len(ctx.conditionCastExpression()))]+[self.visit(ctx.conditionClosedCastExpression())],ops=['*']+[self.visit(ctx.multiplicativeOperator(i)) for i in range(len(ctx.multiplicativeOperator()))])
+                                      
         
     # Visit a parse tree produced by Parser#conditionBreakCastExpression.
     def visitConditionBreakCastExpression(self, ctx:Parser.ConditionBreakCastExpressionContext):
@@ -817,8 +825,9 @@ class ParserVisitor(ParseTreeVisitor):
     def visitConditionBreakClosedCastExpression(self, ctx:Parser.ConditionBreakClosedCastExpressionContext):
         if ctx.conditionBreakUnaryExpression():
             return self.visit(ctx.conditionBreakUnaryExpression())
-        castExpression=self.visit(ctx.conditionBreakCastExpression())
-        return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
+        else:
+            castExpression=self.visit(ctx.conditionBreakCastExpression())
+            return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
                 
     # Visit a parse tree produced by Parser#conditionBreakUnaryExpression.
     def visitConditionBreakUnaryExpression(self, ctx:Parser.ConditionBreakUnaryExpressionContext):
@@ -826,7 +835,8 @@ class ParserVisitor(ParseTreeVisitor):
                 unaryExpression=self.visit(ctx.conditionBreakUnaryExpression())
                 #quadratic time, may need to optimize!
                 return ast_nodes.ConditionBreakUnaryExpression(op=self.visit(ctx.unaryOperator()),condition=self.visit(ctx.conditionUnaryExpression()))
-        return ast_nodes.UnaryExpression(ops=[],postfixExpression=self.visit(ctx.conditionBreakPostfixExpression()))
+        else:
+            return ast_nodes.UnaryExpression(ops=[],postfixExpression=self.visit(ctx.conditionBreakPostfixExpression()))
 
     # Visit a parse tree produced by Parser#conditionBreakPostfixExpression.
     def visitConditionBreakPostfixExpression(self, ctx:Parser.ConditionBreakPostfixExpressionContext):
@@ -950,7 +960,7 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#statementAdditiveExpression.
     def visitStatementAdditiveExpression(self, ctx:Parser.StatementAdditiveExpressionContext):
         if len(ctx.multiplicativeExpression())>0:
-            return ast_nodes.ExtraExpression(op="+",expressions=[self.visit(ctx.statementMultiplicativeExpression())]+[self.visit(ctx.multiplicativeExpression(i)) for i in range(len(ctx.statementMultiplicativeExpression()))],ops=['+']+[self.visit(ctx.additiveOperator(i)) for i in range(len(ctx.additiveOperator()))])
+            return ast_nodes.ExtraExpression(op="+",expressions=[self.visit(ctx.statementMultiplicativeExpression())]+[self.visit(ctx.multiplicativeExpression(i)) for i in range(len(ctx.multiplicativeExpression()))],ops=['+']+[self.visit(ctx.additiveOperator(i)) for i in range(len(ctx.additiveOperator()))])
         else:
             return self.visit(ctx.statementMultiplicativeExpression())
 
@@ -967,7 +977,7 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#statementMultiplicativeExpression.
     def visitStatementMultiplicativeExpression(self, ctx:Parser.StatementMultiplicativeExpressionContext):
         if len(ctx.castExpression())>0:
-            return ast_nodes.ExtraExpression(op="*",expressions=[self.visit(ctx.statementCastExpression())]+[self.visit(ctx.castExpression(i)) for i in range(len(ctx.statementCastExpression()))],ops=['*']+[self.visit(ctx.multiplicativeOperator(i)) for i in range(len(ctx.multiplicativeOperator()))])
+            return ast_nodes.ExtraExpression(op="*",expressions=[self.visit(ctx.statementCastExpression())]+[self.visit(ctx.castExpression(i)) for i in range(len(ctx.castExpression()))],ops=['*']+[self.visit(ctx.multiplicativeOperator(i)) for i in range(len(ctx.multiplicativeOperator()))])
         else:
             return self.visit(ctx.statementCastExpression())
 
