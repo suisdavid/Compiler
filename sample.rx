@@ -1,19 +1,42 @@
-use rx::core::*;
+fn first(x: i32) -> i32 {
+    second(x)
+}
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+fn second(x: i32) -> i32 {
+    x + 1
+}
+
+fn f() -> i32 {
+    if true { 1 } else { 2 };
+}
+
+const Point:i32=5;
+impl Point {
+    const OFFSET: i32 = -OFFSET;
+    fn new(){
+        ;
+    }
+}
 struct Point {
     x: i32,
-    y: i32,
 }
 
-fn shorten_where<'long,'short>(value: &'long i32) -> &'short i32
-where
-    'long: 'short,
-{
-    return;
-}
-fn main() -> () {
-    let x: i32 = 1;
-    z=(x*x)+x%x*x+(x>>x<<x>>x);
-    return;
+const OFFSET:i32=10;
+fn main() {
+    let a = 2 + 3 * 4;     // 14
+    let b = 20 - 5 - 3;    // 12
+    let c = 100 / 5 / 2;   // 10
+    let d = 1 << 2 + 1;    // 8
+
+    let x = 10;
+    let x = x + 1;         // 
+
+    {
+        let x = true;      //
+        let y = x;
+    }
+
+    let result = first(x); // 12
+
+    if a + b * c < 200 && result == 12 {}
 }

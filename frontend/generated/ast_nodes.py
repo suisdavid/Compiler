@@ -24,6 +24,7 @@ def parseIntegerLiteral(s:str):
         val=int(s,16)
     else:
         val=int(s,10)
+    val%=(1<<32)
     return val,type
 
 @dataclass
@@ -36,26 +37,18 @@ class TypeRef:
 
 
 @dataclass
-class TypePathSegment:
+class TypePathSegment:#think about Vec<T>
     identifier: str
     genericArgs: list[TypeRef]
-    pass
 
 @dataclass
 class TypePath(TypeRef):
    typePathSegments: list[TypePathSegment]
 
-
-
 @dataclass
 class ReferenceType(TypeRef):
     mut: bool
     inner: TypeRef
-
-@dataclass
-class ArrayType(TypeRef):
-    inner: TypeRef
-    length: ConstValue
 
 @dataclass
 class Item:#base class
@@ -70,20 +63,17 @@ class SelfParam:
     amp: bool #whether pass by reference
     mut : bool
     lifetime : str
-    pass
 
 @dataclass
 class FunctionParam:
     mut: bool
     identifier: str
     typeref: TypeRef
-    pass
 
 @dataclass
 class StructField:
     identifier: str
     typeref: TypeRef
-    pass
 
 @dataclass
 class FunctionParameters:
@@ -121,14 +111,6 @@ class Expression:
 class StructExprField:
     identifier: str
     expression: Expression
-    
-@dataclass 
-class ConditionExpression(Expression):
-    pass
-
-@dataclass 
-class ConditionUnaryExpression(Expression):
-    pass
 
 @dataclass
 class Statement:
@@ -197,12 +179,6 @@ class UnaryExpression(Expression):
     postfixExpression: PostfixExpression
 
 @dataclass
-class ConditionBreakUnaryExpression(Expression):
-    op: str
-    condition: ConditionUnaryExpression
-
-
-@dataclass
 class CastExpression(Expression):
     unaryExpression: UnaryExpression
     typeRefs: list[TypeRef]
@@ -224,11 +200,11 @@ class ConditionPrimary(PrimaryExpression):
 @dataclass
 class BlockExpression(ConditionPrimary):
     statements: list[Statement]
-    statementexpression: StatementExpression
+    statementexpression: Expression
 
 @dataclass 
 class WhileExpression(Expression):
-    conditionExpression: ConditionExpression 
+    conditionExpression: Expression 
     blockExpression: BlockExpression
 
 @dataclass
@@ -255,8 +231,14 @@ class LiteralExpression(Expression):
 
 @dataclass
 class ConstValue(LiteralExpression):
-    pathInExpression: str 
+    pathInExpression: TypePath 
     minus: bool=False
+
+@dataclass
+class ArrayType(TypeRef):
+    inner: TypeRef
+    length: ConstValue
+
 
 @dataclass
 class ConstantItem(Item):

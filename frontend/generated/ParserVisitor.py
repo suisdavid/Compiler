@@ -182,7 +182,7 @@ class ParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by Parser#typePathSegment.
     def visitTypePathSegment(self, ctx:Parser.TypePathSegmentContext):
-        return ast_nodes.TypePathSegment(identifier=self.visit(ctx.pathIdentSegment()),genericArgs=self.visit(ctx.genericArgs()) if ctx.genericArgs() else None)
+        return ast_nodes.TypePathSegment(identifier=self.visit(ctx.pathIdentSegment()),genericArgs=self.visit(ctx.genericArgs()) if ctx.genericArgs() else [])
 
 
     # Visit a parse tree produced by Parser#pathInExpression.
@@ -193,7 +193,7 @@ class ParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by Parser#pathExprSegment.
     def visitPathExprSegment(self, ctx:Parser.PathExprSegmentContext):# equals typePathSegment
-        return ast_nodes.TypePathSegment(identifier=self.visit(ctx.pathIdentSegment()),genericArgs=self.visit(ctx.genericArgs()) if ctx.genericArgs() else None)
+        return ast_nodes.TypePathSegment(identifier=self.visit(ctx.pathIdentSegment()),genericArgs=self.visit(ctx.genericArgs()) if ctx.genericArgs() else [])
         
 
 
@@ -254,7 +254,7 @@ class ParserVisitor(ParseTreeVisitor):
             return ast_nodes.ConstValue(value=value,type=type,pathInExpression=None)
         elif ctx.MINUS():
             val=self.visit(ctx.magnitude())
-            if isinstance(val,str):
+            if isinstance(val,ast_nodes.TypePath):
                 return ast_nodes.ConstValue(minus=True,type='',value=None,pathInExpression=val)
             else:
                 return ast_nodes.ConstValue(minus=True,value=val[0],type=val[1],pathInExpression=None)
@@ -267,7 +267,7 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.magnitude():
             return self.visit(ctx.magnitude())
         elif ctx.pathInExpression():
-            return ctx.pathInExpression().getText()
+            return self.visit(ctx.pathInExpression())
         else:
             return ast_nodes.parseIntegerLiteral(ctx.INTEGER_LITERAL().getText())
 
@@ -285,8 +285,13 @@ class ParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by Parser#blockExpression.
     def visitBlockExpression(self, ctx:Parser.BlockExpressionContext):
-        return ast_nodes.BlockExpression(statements=[self.visit(ctx.statement(i)) for i in range(len(ctx.statement()))],statementexpression=self.visit(ctx.statementExpression()) if ctx.statementExpression() else None)
-
+        statements=[self.visit(ctx.statement(i)) for i in range(len(ctx.statement()))]
+        if ctx.statementExpression():
+            return ast_nodes.BlockExpression(statements=statements,statementexpression=self.visit(ctx.statementExpression()))
+        elif len(statements)>0 and isinstance(statements[-1],ast_nodes.NonLetStatement) and statements[-1].semi==False:
+            return ast_nodes.BlockExpression(statements=statements[:-1],statementexpression=statements[-1].expression)
+        else:
+            return ast_nodes.BlockExpression(statements=statements,statementexpression=None)
 
     # Visit a parse tree produced by Parser#statement.
     def visitStatement(self, ctx:Parser.StatementContext):
@@ -305,7 +310,7 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.ifExpression():
             return self.visit(ctx.ifExpression())
         else:
-            return ast_nodes.NormalExpressionWithBlock(blockExpression=ctx.blockExpression(),loop=ctx.LOOP() or ctx.WHILE(),conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)
+            return ast_nodes.NormalExpressionWithBlock(blockExpression=self.visit(ctx.blockExpression()),loop=ctx.LOOP() or ctx.WHILE(),conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)
 
 
     # Visit a parse tree produced by Parser#ifExpression.
@@ -470,7 +475,10 @@ class ParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by Parser#castExpression.
     def visitCastExpression(self, ctx:Parser.CastExpressionContext):
-        return ast_nodes.CastExpression(unaryExpression=self.visit(ctx.unaryExpression()),typeRefs=[self.visit(ctx.typeRef(i)) for i in range(len(ctx.typeRef()))])
+        if len(ctx.typeRef())>0:
+            return ast_nodes.CastExpression(unaryExpression=self.visit(ctx.unaryExpression()),typeRefs=[self.visit(ctx.typeRef(i)) for i in range(len(ctx.typeRef()))])
+        else:
+            return self.visit(ctx.unaryExpression())
 
     # Visit a parse tree produced by Parser#closedCastExpression.
     def visitClosedCastExpression(self, ctx:Parser.ClosedCastExpressionContext):
@@ -643,7 +651,10 @@ class ParserVisitor(ParseTreeVisitor):
         
     # Visit a parse tree produced by Parser#conditionCastExpression.
     def visitConditionCastExpression(self, ctx:Parser.ConditionCastExpressionContext):
-        return ast_nodes.CastExpression(unaryExpression=self.visit(ctx.conditionUnaryExpression()),typeRefs=[self.visit(ctx.typeRef(i)) for i in range(len(ctx.typeRef()))])
+        if len(ctx.typeRef())>0:
+            return ast_nodes.CastExpression(unaryExpression=self.visit(ctx.conditionUnaryExpression()),typeRefs=[self.visit(ctx.typeRef(i)) for i in range(len(ctx.typeRef()))])
+        else:
+            return self.visit(ctx.conditionUnaryExpression())
 
     # Visit a parse tree produced by Parser#conditionClosedCastExpression.
     def visitConditionClosedCastExpression(self, ctx:Parser.ConditionClosedCastExpressionContext):
@@ -819,8 +830,12 @@ class ParserVisitor(ParseTreeVisitor):
         
     # Visit a parse tree produced by Parser#conditionBreakCastExpression.
     def visitConditionBreakCastExpression(self, ctx:Parser.ConditionBreakCastExpressionContext):
-        return ast_nodes.CastExpression(unaryExpression=self.visit(ctx.conditionBreakUnaryExpression()),typeRefs=[self.visit(ctx.typeRef(i)) for i in range(len(ctx.typeRef()))])
+        if len(ctx.typeRef())>0:
+            return ast_nodes.CastExpression(unaryExpression=self.visit(ctx.conditionBreakUnaryExpression()),typeRefs=[self.visit(ctx.typeRef(i)) for i in range(len(ctx.typeRef()))])
+        else:
+            return self.visit(ctx.conditionBreakUnaryExpression())
 
+        
     # Visit a parse tree produced by Parser#conditionBreakClosedCastExpression.
     def visitConditionBreakClosedCastExpression(self, ctx:Parser.ConditionBreakClosedCastExpressionContext):
         if ctx.conditionBreakUnaryExpression():
@@ -832,9 +847,9 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#conditionBreakUnaryExpression.
     def visitConditionBreakUnaryExpression(self, ctx:Parser.ConditionBreakUnaryExpressionContext):
         if ctx.unaryOperator():
-                unaryExpression=self.visit(ctx.conditionBreakUnaryExpression())
+                unaryExpression=self.visit(ctx.conditionUnaryExpression())
                 #quadratic time, may need to optimize!
-                return ast_nodes.ConditionBreakUnaryExpression(op=self.visit(ctx.unaryOperator()),condition=self.visit(ctx.conditionUnaryExpression()))
+                return ast_nodes.UnaryExpression(ops=[self.visit(ctx.unaryOperator())]+unaryExpression.ops,postfixExpression=unaryExpression.postfixExpression)
         else:
             return ast_nodes.UnaryExpression(ops=[],postfixExpression=self.visit(ctx.conditionBreakPostfixExpression()))
 
@@ -992,8 +1007,12 @@ class ParserVisitor(ParseTreeVisitor):
         
     # Visit a parse tree produced by Parser#statementCastExpression.
     def visitStatementCastExpression(self, ctx:Parser.StatementCastExpressionContext):
-        return ast_nodes.CastExpression(unaryExpression=self.visit(ctx.statementUnaryExpression()),typeRefs=[self.visit(ctx.typeRef(i)) for i in range(len(ctx.typeRef()))])
+        if len(ctx.typeRef())>0:
+            return ast_nodes.CastExpression(unaryExpression=self.visit(ctx.statementUnaryExpression()),typeRefs=[self.visit(ctx.typeRef(i)) for i in range(len(ctx.typeRef()))])
+        else:
+            return self.visit(ctx.statementUnaryExpression())
 
+        
     # Visit a parse tree produced by Parser#statementClosedCastExpression.
     def visitStatementClosedCastExpression(self, ctx:Parser.StatementClosedCastExpressionContext):
         if ctx.statementUnaryExpression():

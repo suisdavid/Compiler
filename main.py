@@ -3,6 +3,7 @@ from antlr4 import FileStream, CommonTokenStream, Token
 from frontend.generated.Lexer import Lexer
 from frontend.generated.Parser import Parser
 from frontend.generated.ParserVisitor import ParserVisitor
+from semantic.checker import Checker
 from pprint import pprint
 
 def parse_file(file_name):
@@ -11,7 +12,6 @@ def parse_file(file_name):
     tokens=CommonTokenStream(lexer)#token stream
     parser=Parser(tokens)
     tree=parser.crate() #CST
-    print(tree.toStringTree(recog=parser))
     return tree
 
 def ast_build(file_name):
@@ -24,4 +24,6 @@ if __name__=="__main__":
         print("no file path provided!")
         sys.exit(0)
     crate=ast_build(sys.argv[1])
-    pprint(crate)
+    checker=Checker(crate)
+    checker.SymbolCollection()
+    pprint(checker.ConstValues)
