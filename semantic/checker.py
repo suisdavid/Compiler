@@ -18,7 +18,7 @@ class Checker:
         if impl==None and constant.identifier in ["get_i32", "print_i32","println_i32"]:
             raise SemanticError(f"{constant.identifier} is reserved!")
         name=impl+"::"+constant.identifier if impl else constant.identifier
-        if self.ConstantLocations.get(name):
+        if self.ConstantLocations.get(name) or self.FunctionLocations.get(name):
            raise SemanticError(f"constant {name} already registered!")
         typeref=constant.typeref
         if not isinstance(typeref,ast_nodes.TypePath):
@@ -38,13 +38,17 @@ class Checker:
             raise SemanticError(f"{struct.identifier} is reserved!")
         if self.StructLocations.get(struct.identifier):
             raise SemanticError(f"struct {struct.identifier} already registered!")
+        if len(struct.outerAttributes)!=len(list(set(struct.outerAttributes))):
+            raise SemanticError(f"struct {struct.identifier} has repetitive outerAttributes!")
+        if ("Copy" in struct.outerAttributes and "Clone" not in struct.outerAttributes) or ("Eq" in struct.outerAttributes and "PartialEq" not in struct.outerAttributes):
+            raise SemanticError(f"struct {struct.identifier} has invalid outerAttributes!")
         self.StructLocations[struct.identifier]=struct
 
     def RegisterFunction(self, function: ast_nodes.FunctionDefinition,impl=None):
-        if function.identifier in ["get_i32", "print_i32", "println_i32"]:
+        if impl==None and function.identifier in ["get_i32", "print_i32", "println_i32"]:
             raise SemanticError(f"{function.identifier} is reserved!")
         name=impl+"::"+function.identifier if impl else function.identifier
-        if self.FunctionLocations.get(name):
+        if self.ConstantLocations.get(name) or self.FunctionLocations.get(name):
             raise SemanticError(f"function {name} already registered!")
         self.FunctionLocations[name]=function
 
@@ -62,24 +66,31 @@ class Checker:
         self.vis[name]=1
         if constvalue.pathInExpression:
             path=constvalue.pathInExpression
-            if len(path.typePathSegments)!=1:
-                raise SemanticError("wrong type! RX doesn't support !=1 typePathSegments") 
-            segment=path.typePathSegments[0]
+            if len(path.typePathSegments)!=1 and len(path.typePathSegments)!=2:
+                raise SemanticError("wrong type! RX only supports 1/2 typePathSegments") 
+            segment=path.typePathSegments[-1]
             if len(segment.genericArgs)!=0:
                 raise SemanticError(f"wrong type! {len(segment.genericArgs)} arguments inside {segment.identifier} instead of 0!")
             next_name=segment.identifier
-            #handle Self
-            if next_name.startswith("Self::"):
-                if "::" in name:
-                    next_name=name[:name.index("::")]+next_name[4:]
+            if len(path.typePathSegments)==2:#impl
+                impl=path.typePathSegments[0]
+                if len(impl.genericArgs)!=0:
+                    raise SemanticError(f"wrong type! {len(impl.genericArgs)} arguments inside {impl.identifier} instead of 0!")
+                if impl.identifier=='Self':
+                    if "::" in name:
+                        next_name=name[:name.index("::")]+"::"+next_name
+                    else:
+                        raise SemanticError(f"undefined Self! {next_name}") 
                 else:
-                    raise SemanticError(f"undefined Self! {next_name}") 
+                    next_name=impl.identifier+"::"+next_name
+                
             if not self.ConstantLocations.get(next_name):
                 raise SemanticError(f"undefined constant! {next_name}") 
-            next_type,constValue=self.ConstantLocations[next_name]
-            basicValue=self.ParseConstantItem(next_name,self.ConstantLocations[next_name],next_type)
+            next_type,next_value=self.ConstantLocations[next_name]
+            basicValue=self.ParseConstantItem(next_name,next_value,next_type)
             constvalue.type=basicValue.type
             constvalue.value=basicValue.value
+
         if (constvalue.type=='u32' or constvalue.type=='usize' or constvalue.type=='bool' or mustbe=='u32' or mustbe=='usize' or mustbe=='bool') and constvalue.minus:
             raise SemanticError("cannot use - for unsigned types!")
         if constvalue.type and mustbe and constvalue.type!=mustbe:
@@ -95,7 +106,7 @@ class Checker:
     def ParseConst(self,constvalue:ast_nodes.ConstValue,mustbe=None,impl=None):
         return self.ParseConstantItem(impl+"::" if impl else "",constvalue,mustbe)
     
-    def ParseTypeRef(self,typeref:ast_nodes.TypeRef,impl=None):#return Object
+    def ParseTypeRef(self,typeref:ast_nodes.TypeRef,impl=None,typeonly=False,structName=None):#return Object
         if isinstance(typeref,ast_nodes.TypePath):
             if len(typeref.typePathSegments)!=1:
                 raise SemanticError("wrong type! RX doesn't support !=1 typePathSegments")
@@ -103,22 +114,30 @@ class Checker:
             if segment.identifier=='Vec' or segment.identifier=='Box':
                 if len(segment.genericArgs)!=1:
                     raise SemanticError(f"wrong type! {len(segment.genericArgs)} arguments inside {segment.identifier} instead of 1!")
-                T=self.ParseTypeRef(segment.genericArgs[0])
-                return Vec(type='Vec<'+T.type+'>',T=T,elements=[]) if segment.identifier=='Vec' else Box(type='Box<'+T.type+'>',T=T)
+                T=self.ParseTypeRef(segment.genericArgs[0],impl=impl,typeonly=True)
+                return Vec(type='Vec<'+T.type+'>',elements=[]) if segment.identifier=='Vec' else Box(type='Box<'+T.type+'>',value=T)
             else:
                 if len(segment.genericArgs)!=0:
                     raise SemanticError(f"wrong type! {len(segment.genericArgs)} arguments inside {segment.identifier} instead of 0!")
                 if segment.identifier in ["i32","u32","isize","usize","bool"]:
                     return self.ParseBasic(segment.identifier)
+                if segment.identifier=='Self':
+                    if structName:
+                        segment.identifier=structName
+                    else:
+                        raise SemanticError("use Self outside struct definition!")
                 elif self.StructLocations.get(segment.identifier):
-                    return self.ParseStruct(self.StructLocations[segment.identifier])
+                    if typeonly:
+                        return Object(type=segment.identifier)
+                    else:
+                        return self.ParseStruct(self.StructLocations[segment.identifier])
                 else:
                     raise SemanticError(f"{segment.identifier} not defined!")
         elif isinstance(typeref,ast_nodes.ReferenceType):
-            T=self.ParseTypeRef(typeref.inner)
+            T=self.ParseTypeRef(typeref.inner,impl=impl,typeonly=True)
             return Reference(mut=typeref.mut,value=T,type='&'+('mut ' if typeref.mut else ' ')+T.type)
         elif isinstance(typeref,ast_nodes.ArrayType):
-            T=self.ParseTypeRef(typeref.inner)
+            T=self.ParseTypeRef(typeref.inner,impl=impl,typeonly=typeonly)
             length=self.ParseConst(typeref.length,mustbe='usize',impl=impl)
             return Array(T=T,length=length.value,type=f'[{T.type};{length.value}]',elements=None)
         else:
@@ -135,7 +154,7 @@ class Checker:
         for structField in struct.fields:
             if fields.get(structField.identifier):
                 raise SemanticError(f"{structField.identifier} already defined in struct {name}")
-            fields[structField.identifier]=self.ParseTypeRef(structField.typeref)
+            fields[structField.identifier]=self.ParseTypeRef(structField.typeref,impl=None,typeonly=False,structName=None)
         self.vis[name]=0
         result=Struct(type=name,outerAttributes=struct.outerAttributes,fields=fields)
         self.StructDefinitions[name]=result
@@ -143,13 +162,15 @@ class Checker:
 
     def ParseFunction(self,name:str,function:ast_nodes.FunctionDefinition):#return functionInfo
         params={}
+        if "::" not in name and function.functionParameters and function.functionParameters.selfParam:
+            raise SemanticError("top-level functions cannot have selfparam!")
         if function.functionParameters:
             for each in function.functionParameters.parameters:
                 if params.get(each.identifier):
                     raise SemanticError(f"parameter {each.identifier} repeated in function {name}")
                 params[each.identifier]=Variable(mut=each.mut,value=self.ParseTypeRef(each.typeref))
 
-        result=FunctionInfo(name=name,self=function.functionParameters.selfParam if function.functionParameters else None,params=params,returnType=self.ParseTypeRef(function.typeref),body=function.blockExpression)
+        result=FunctionInfo(name=name,self=function.functionParameters.selfParam if function.functionParameters else None,params=params,returnType=self.ParseTypeRef(function.typeref) if function.typeref else None,body=function.blockExpression)
         self.FunctionDefinitions[name]=result
         return result
     
@@ -162,7 +183,14 @@ class Checker:
                 self.RegisterStruct(item)
             elif isinstance(item,ast_nodes.FunctionDefinition):
                 self.RegisterFunction(item)
-
+        #check main
+        if not self.FunctionLocations.get("main"):
+            raise SemanticError("main function not defined!")
+        main=self.FunctionLocations["main"]
+        if main.hasGeneric:
+            raise SemanticError("main function cannot have genericArgs!")
+        if main.functionParameters or main.typeref:
+            raise SemanticError("main function has no arg or returnType")
         for item in self.crate.Items:
             if isinstance(item,ast_nodes.InherentImpl):
                 typeref=item.typeRef
@@ -197,8 +225,9 @@ class Checker:
         self.vis={}
         for name in self.FunctionLocations:
             self.ParseFunction(name,self.FunctionLocations[name])
+        
 
-
+   
 
                             
 

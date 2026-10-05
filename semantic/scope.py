@@ -22,12 +22,10 @@ class Struct(Object):
 
 @dataclass
 class Box(Object):#Box<T>, supports new
-    T: Object
     value: Object
 
 @dataclass
 class Vec(Object):#Vec<T>, supports new,len,is_empty,push,remove
-    T: Object
     elements:list[Object]
     def len(self):
         return len(self.elements)
@@ -35,7 +33,7 @@ class Vec(Object):#Vec<T>, supports new,len,is_empty,push,remove
         return len(self.elements)==0
     def push(self,value: Object):
         if value.type!=self.type: #can be determined in compilation
-            raise SemanticError(f"wrong type! {value.type} != {self.T.type}")
+            raise SemanticError(f"wrong type! {value.type} != {self.type[4:-1]}")
         self.elements.append(value)
     def remove(self,index:int):#check index in runtime
         return self.elements().pop(index)
@@ -64,7 +62,7 @@ class FunctionInfo:
 class Scope:
     values: dict[str,Variable]
     parent: Scope=None
-    def registered(self,name: str, value: Object): #check registered in advance
+    def registered(self,name: str): #check registered in advance
         scope=self
         while scope!=None and scope.values.get(name)==None:
             scope=scope.parent

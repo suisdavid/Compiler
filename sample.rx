@@ -17,11 +17,15 @@ impl Point {
         ;
     }
 }
+#[derive(PartialEq)]
+struct P{
+    x: Point
+}
 struct Point {
     x: i32,
 }
-
 const OFFSET:i32=10;
+const offset2:i32=-Point::OFFSET;
 fn main() {
     let a = 2 + 3 * 4;     // 14
     let b = 20 - 5 - 3;    // 12

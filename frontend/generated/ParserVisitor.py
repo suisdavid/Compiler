@@ -52,7 +52,7 @@ class ParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by Parser#functionDefinition.
     def visitFunctionDefinition(self, ctx:Parser.FunctionDefinitionContext):
-        return ast_nodes.FunctionDefinition(identifier=self.visit(ctx.identifier()), functionParameters=self.visit(ctx.functionParameters()) if ctx.functionParameters() else None, typeref=self.visit(ctx.typeRef()) if ctx.typeRef() else None,  blockExpression=self.visit(ctx.blockExpression()))
+        return ast_nodes.FunctionDefinition(identifier=self.visit(ctx.identifier()), functionParameters=self.visit(ctx.functionParameters()) if ctx.functionParameters() else None, typeref=self.visit(ctx.typeRef()) if ctx.typeRef() else None,  blockExpression=self.visit(ctx.blockExpression()),hasGeneric=ctx.genericParams() is not None)
 
 
     # Visit a parse tree produced by Parser#functionParameters.

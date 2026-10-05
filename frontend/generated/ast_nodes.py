@@ -276,6 +276,7 @@ class FunctionDefinition(Item):
     typeref: TypeRef
     #whereClause: WhereClause
     blockExpression: BlockExpression
+    hasGeneric: bool #only used for main check
 
 @dataclass
 class Crate:
