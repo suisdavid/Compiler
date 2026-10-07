@@ -211,11 +211,11 @@ class ConditionPrimaryWithoutBareBlock(ConditionPrimary):
 class NormalExpressionWithBlock(ExpressionWithBlock):
     loop: bool
     blockExpression: BlockExpression
-    conditionExpression: ConditionExpression
+    conditionExpression: Expression
     
 @dataclass
 class IfExpression(ExpressionWithBlock):#switch expressions
-    conditionExpressions: list[ConditionExpression]
+    conditionExpressions: list[Expression]
     blockExpressions: list[BlockExpression]
     #len(blockExpressions)= len(conditionExpressions) or len(conditionExpressions)+1
 

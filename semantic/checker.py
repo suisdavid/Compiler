@@ -184,7 +184,7 @@ class Checker:
                 if each.identifier in paramNames:
                     raise SemanticError(f"parameter {each.identifier} repeated in function {name}")
                 paramNames.append(each.identifier)
-                params.append(Variable(mut=each.mut,value=self.ParseTypeRef(each.typeref,impl=impl),name=name+"@"+each.identifier,left=True))#@ stands for scope change
+                params.append(Variable(mut=each.mut,mut_blocked=False,left=True,type=self.ParseTypeRef(each.typeref,impl=impl).type,name=name+"@"+each.identifier))#@ stands for scope change
 
         result=FunctionInfo(name=name,self=function.functionParameters.selfParam if function.functionParameters else None,paramNames=paramNames,params=params,returnType=self.ParseTypeRef(function.typeref,impl=impl) if function.typeref else None,body=function.blockExpression)
         self.FunctionDefinitions[name]=result
@@ -241,6 +241,45 @@ class Checker:
         self.vis={}
         for name in self.FunctionLocations:
             self.ParseFunction(name,self.FunctionLocations[name])
+
+    def CheckAttribute(self,type:str, attribute:str):
+        while True:
+            if type in self.basicTypes:
+                return True
+            if type.startswith("& "):
+                if attribute in ["Copy","Clone"]:
+                    return True
+                else:
+                    type=type[2:]
+            elif type.startswith("&mut "):
+                if attribute in ["Copy","Clone"]:
+                    return False
+                else:
+                    type=type[2:]
+            elif type.startswith("["):
+                type=self.GetArrayInner(type)
+            elif type.startswith("Box<") or type.startswith("Vec<"):
+                if attribute=="Copy":
+                    return False
+                else:
+                    type=type[4:-1]
+            else:
+                struct=self.StructDefinitions.get(type)
+                if not struct:
+                    raise SemanticError(f"struct {type} does not exist!")
+                return attribute in struct.outerAttributes
+
+    def dereference(self,type:str):
+        while True:
+            if type.startswith("& "):
+                type=type[2:]
+            elif type.startswith("&mut "):
+                type=type[5:]
+            elif type.startswith("Box<"):
+                type=type[4:-1]
+            else:
+                return type
+            
     def CanTransform(self,right:str,left:str):#type already fixed 
         if right==left or right=='^':#^ for never type
             return True
@@ -341,7 +380,74 @@ class Checker:
                 type0.mut=False
                 type0.left=False
                 type0.type='&mut ' if 'mut' in op else '& '+type0.type
-    #pass inloop
+    def CheckVecBox(self,VecBox:str,func_name:str,scope:Scope,arguments:str,innerType:str,directCall=False,impl=None,inloop="",type0:Type=None):#return Type
+        if VecBox=="Vec":
+            if func_name=='new':
+                if directCall==False:
+                    raise SemanticError("indirect call of Vec<>::new!")
+                if len(arguments)!=0:
+                    raise SemanticError(f"param number not align!  {len(arguments)}!=0")
+                return Type(mut=False,mut_blocked=False,left=False,type=f"Vec<{innerType}>")
+            elif func_name=="len":#direct call
+                if len(arguments)!=directCall:
+                    raise SemanticError(f"param number not align!  {len(arguments)}!={directCall}")
+                if directCall:
+                    self.ParseExpression(scope,arguments[0],expected=f'& Vec<{innerType}>',impl=impl,inloop=inloop)
+                return Type(mut=False,mut_blocked=False,left=False,type="usize")
+            elif func_name=="is_empty":
+                if len(arguments)!=directCall:
+                    raise SemanticError(f"param number not align!  {len(arguments)}!={directCall}")
+                if directCall:
+                    self.ParseExpression(scope,arguments[0],expected=f'& Vec<{innerType}>',impl=impl,inloop=inloop)
+                return Type(mut=False,mut_blocked=False,left=False,type="bool")
+            elif func_name=="push":
+                if len(arguments)!=1+directCall:
+                    raise SemanticError(f"param number not align!  {len(arguments)}!={1+directCall}")
+                if directCall:
+                    self.ParseExpression(scope,arguments[0],expected=f'&mut Vec<{innerType}>',impl=impl,inloop=inloop)
+                else:
+                    if not (type0.mut and not type0.mut_blocked):
+                        raise SemanticError("not mut self!")
+                self.ParseExpression(scope,arguments[-1],expected=innerType,impl=impl,inloop=inloop)
+                return Type(mut=False,mut_blocked=False,left=False,type="()")
+            elif func_name=="remove":
+                if len(arguments)!=1+directCall:
+                    raise SemanticError(f"param number not align!  {len(arguments)}!={1+directCall}")
+                if directCall:
+                    self.ParseExpression(scope,arguments[0],expected=f'&mut Vec<{innerType}>',impl=impl,inloop=inloop)
+                else:
+                    if not (type0.mut and not type0.mut_blocked):
+                        raise SemanticError("not mut self!")
+                self.ParseExpression(scope,arguments[-1],expected='usize',impl=impl,inloop=inloop)
+                return Type(mut=False,mut_blocked=False,left=False,type=innerType)
+            elif func_name=="clone":
+                if len(arguments)!=directCall:
+                    raise SemanticError(f"param number not align!  {len(arguments)}!={directCall}")
+                if not self.CheckAttribute(innerType,"Clone"):
+                    raise SemanticError(f"{innerType} cannot clone!")
+                if directCall:
+                    self.ParseExpression(scope,arguments[0],expected=f'& Vec<{innerType}>',impl=impl,inloop=inloop)
+                return Type(mut=False,mut_blocked=False,left=False,type=f"Vec<{innerType}>")
+            else:
+                raise SemanticError(f"No such function {func_name} in Vec<T>!")
+        else:#Box
+            if func_name=="new":
+                if directCall==False:
+                    raise SemanticError("indirect call of Vec<>::new!")
+                if len(arguments)!=0:
+                    raise SemanticError(f"param number not align!  {len(arguments)}!=0")
+                return Type(mut=False,mut_blocked=False,left=False,type=f"Box<{innerType}>")
+            elif func_name=="clone":
+                if len(arguments)!=directCall:
+                     raise SemanticError(f"param number not align!  {len(arguments)}!={directCall}")
+                if not self.CheckAttribute(innerType,"Clone"):
+                    raise SemanticError(f"{innerType} cannot clone!")
+                if directCall:
+                    self.ParseExpression(scope,arguments[0],expected=f'& Box<{innerType}>',impl=impl,inloop=inloop)
+                return Type(mut=False,mut_blocked=False,left=False,type=f"Box<{innerType}>")
+            else:
+                raise SemanticError(f"No such function {func_name} in Box<T>!")
+
     #inloop: "if"+type,"while"+type,"loop"+type,""
     def ParseExpression(self,scope:Scope,expression:ast_nodes.Expression,expected:str=None,impl=None,inloop=""):#return Type
         if isinstance(expression,ast_nodes.PrimitiveExpression):
@@ -368,6 +474,8 @@ class Checker:
                 if expected and expected!=type:
                     raise SemanticError(f"expression type error! {type} != {expected}")
                 return Type(mut=False,mut_blocked=False,left=False,type=type)
+
+            
         elif isinstance(expression,ast_nodes.UnaryExpression):
             type=self.ParseExpression(scope,expression.postfixExpression,expected=expected if len(expression.ops)==0 else None,impl=impl,inloop=inloop)
             for op in expression.ops[::-1]:
@@ -382,6 +490,7 @@ class Checker:
             if expected and expected!=type.type:
                 raise SemanticError(f"expression type error! {type.type} != {expected}")
             return type
+
         elif isinstance(expression,ast_nodes.CastExpression):
             type0=self.ParseExpression(scope,expression.unaryExpression,expected=expected if len(expression.typeRefs)==0 else None,impl=impl,inloop=inloop)
             for each in expression.typeRefs:
@@ -392,32 +501,40 @@ class Checker:
             if expected and expected!=type0.type:
                 raise SemanticError(f"expression type error! {type0.type} != {expected}")
             return type0
+
+        
         elif isinstance(expression,ast_nodes.PostfixExpression):
             type0=self.ParseExpression(scope,expression.primaryExpression,expected=expected if len(expression.postfixSuffixes)==0 else None,impl=impl,inloop=inloop)
             for suffix in expression.postfixSuffixes:
                 if isinstance(suffix,ast_nodes.CallArguments):
-                    if type0.type.startswith("#"):
-                        if type0.type.startswith("#Vec<"):#Vec operations
-                            innerType=type0.type[5:type0.type.index("::")-1]
-                            func_name=type0.type[type0.type.index("::")+2:]
-                            #new,len,is_empty,push,remove
-                            if func_name=='new':
-                                if len(suffix.expression)==1:
-                                    raise SemanticError(f"param number not align!  {len(suffix.expressions)}!=1")
-                                self.ParseExpression(scope,suffix.expressions[0],expected=innerType,impl=impl,inloop=inloop)
-                            type0=Type(mut=False,mut_blocked=False,left=False,type=innerType)
-                            elif func_name=='len':
-                        elif type0.type.startswith("#Box<"):
-                            innerType=type0[5:type0.type.index("::")-1]
+                    if type0.type.startswith("#"):#function
+                        if type0.type.startswith("#Vec<") or type0.type.startswith("#Box<"):#Vec operations        
+                            type0=self.CheckVecBox(type0.type[1:4],type0.type[type0.type.index("::")+2:],scope,suffix.expression,type0.type[5:type0.type.index("::")-1],directCall=True,impl=impl,inloop=inloop)
                         else:
-                            func=self.FunctionDefinitions.get(type0.type[1:])
+                            type=type0.type[1:]
+                            func=self.FunctionDefinitions.get(type)
                             if not func:
-                                raise SemanticError(f"function {type0.type[1:]} does not exist!")
-                            if len(suffix.expressions)!=len(func.paramNames):
-                                raise SemanticError(f"param number not align!  {len(suffix.expressions)}!={len(func.paramNames)}")
-                            for i in range(len(suffix.expressions)):
-                                self.ParseExpression(scope,suffix.expressions[i],expected=func.params[i].type,impl=impl,inloop=inloop)
-                            type0=Type(mut=False,mut_blocked=False,left=False,type=func.returnType.type if func.returnType else "()")
+                                if type.count("::")==1 and type[type.index("::")+2:]=="clone":#if defined clone, use the user-defined clone
+                                    structName=type[:type.index("::")]
+                                    if self.CheckAttribute(structName,"Clone"):
+                                        if len(suffix.expressions)!=1:
+                                            raise SemanticError(f"param number not align!  {len(suffix.expressions)}!=1")
+                                        self.ParseExpression(scope,suffix.expressions[0],expected=f"& {structName}",impl=impl,inloop=inloop)
+                                        type0=Type(mut=False,mut_blocked=False,left=False,type=structName)
+                                    else:
+                                        raise SemanticError(f"struct {structName} cannot clone!")
+                                else:
+                                    raise SemanticError(f"function {type} does not exist!")
+                            else:
+                                has_self=(func.self is not None)
+                                if len(suffix.expressions)!=len(func.paramNames)+has_self:
+                                    raise SemanticError(f"param number not align!  {len(suffix.expressions)}!={len(func.paramNames)+has_self}")
+                                for i in range(has_self,len(suffix.expressions)):
+                                    self.ParseExpression(scope,suffix.expressions[i],expected=func.params[i-has_self].type,impl=impl,inloop=inloop)
+                                if has_self:
+                                    self_type=("&mut " if (func.self.amp and func.self.mut) else ("& " if func.self.amp else ""))+func.name[:func.name.index("::")]#impl
+                                    self.ParseExpression(scope,suffix.expressions[0],expected=self_type,impl=impl,inloop=inloop)
+                                type0=Type(mut=False,mut_blocked=False,left=False,type=func.returnType.type if func.returnType else "()")
                     else:
                         raise SemanticError(f"not function! {type0.type}")
                 elif isinstance(suffix,ast_nodes.BracketSuffix):
@@ -427,27 +544,47 @@ class Checker:
                     else:
                         raise SemanticError(f"not array! {type0.type}")
                 elif isinstance(suffix,ast_nodes.DotSuffix):
-                    struct=self.StructDefinitions.get(type0.type)
-                    if not struct:
-                        raise SemanticError(f"struct {type0.type} does not exist!")
+                    type=self.dereference(type0.type)
+                    struct=self.StructDefinitions.get(type)
+                    if not type.startswith("Vec<") and not type.startswith("Box<") and not struct:
+                        raise SemanticError(f"struct {type} does not exist!")
                     if isinstance(suffix,ast_nodes.DotSuffixData):
+                        if type.startswith("Vec<") or type.startswith("Box<"):
+                            raise SemanticError("Vec or Box has not data member!")
                         structField=struct.fields.get(suffix.identifier)
                         if not structField:
-                            raise SemanticError(f"field {suffix.identifier} does not exist in struct {type0.type}!")
-                        type0=Type(mut=type0.mut,mut_blocked=type0.mut_blocked,left=True,type=structField.type)
+                            raise SemanticError(f"field {suffix.identifier} does not exist in struct {type}!")
+                        type0=Type(mut=type0.mut and not type0.mut_blocked,mut_blocked=False,left=True,type=structField.type)
                     elif isinstance(suffix,ast_nodes.DotSuffixMethod):
                         if suffix.pathExprSegment.genericArgs:
-                            raise SemanticError(f"function {type0.type}::{suffix.pathExprSegment.identifier} has genericArgs!")
-                        func=struct.fields.get(type0.type+"::"+suffix.pathExprSegment.identifier)
-                        if not func:
-                            raise SemanticError(f"function {type0.type}::{suffix.pathExprSegment.identifier} does not exist!")
-                        arguments=suffix.callarguments
-                        if len(arguments.expressions)!=len(func.paramNames):
-                            raise SemanticError(f"param number not align!  {len(arguments.expressions)}!={len(func.paramNames)}")
-                        for i in range(len(arguments.expressions)):
-                            self.ParseExpression(scope,arguments.expressions[i],expected=func.params[i].type,impl=impl,inloop=inloop)
-                        type0=Type(mut=False,mut_blocked=False,left=False,type=func.returnType.type if func.returnType else "()")
+                            raise SemanticError(f"function {type}::{suffix.pathExprSegment.identifier} has genericArgs!")
+                        if type.startswith("Vec<") or type.startswith("Box<"):
+                            type0=self.CheckVecBox(type[:3],suffix.pathExprSegment.identifier,scope,suffix.callarguments.expressions,type[4:-1],impl=impl,inllop=inloop,type0=type0)
+                        else:
+                            if suffix.pathExprSegment.identifier=="clone":
+                                if len(arguments.expressions)!=0:
+                                    raise SemanticError(f"param number not align!  {len(arguments.expressions)}!=0")
+                                if not self.CheckAttribute(type,"Clone"):
+                                    raise SemanticError(f"struct {type} cannot clone!")
+                                type0=Type(mut=False,mut_blocked=False,left=False,type=type)
+                            else:
+                                func=self.FunctionDefinitions.get(type+"::"+suffix.pathExprSegment.identifier)
+                                if not func:
+                                    raise SemanticError(f"function {type}::{suffix.pathExprSegment.identifier} does not exist!")
+                                if not func.self:
+                                    raise SemanticError(f"function {type}::{suffix.pathExprSegment.identifier} does not have self param!")
+                                if func.self.mut and func.self.amp and (not (type0.mut and not type0.mut_blocked)):
+                                    raise SemanticError("not mut self!")
+                                arguments=suffix.callarguments
+                                if len(arguments.expressions)!=len(func.paramNames):
+                                    raise SemanticError(f"param number not align!  {len(arguments.expressions)}!={len(func.paramNames)}")
+                                for i in range(1,len(arguments.expressions)):
+                                    self.ParseExpression(scope,arguments.expressions[i],expected=func.params[i-1].type,impl=impl,inloop=inloop)
+                                type0=Type(mut=False,mut_blocked=False,left=False,type=func.returnType.type if func.returnType else "()")
             return type0
+
+
+        
         elif isinstance(expression,ast_nodes.NonBlockPrimary):
             if expression.type=='literal':
                 return self.ParseExpression(scope,expression.expression,expected=expected,impl=impl,inloop=inloop)
@@ -517,8 +654,7 @@ class Checker:
                 else:
                     raise SemanticError("break outside loop!")
             elif expression.type=='return':
-                function_name=scope.getFunction()
-                retType=self.FunctionDefinitions.get(function_name).returnType
+                retType=self.FunctionDefinitions.get(self.functionName).returnType
                 type=retType.type if retType else "()"
                 if expression.expression:
                     return self.ParseExpression(scope,expression.expression,expected=type,impl=impl,inloop=inloop)
@@ -529,6 +665,11 @@ class Checker:
             elif expression.type=='continue':
                 if not (inloop.startswith("loop") or inloop.startswith("while")):
                     raise SemanticError("continue outside loop!")
+            return type0
+
+        elif isinstance(expression,ast_nodes.NormalExpressionWithBlock):
+        elif isinstance(expression,ast_nodes.IfExpression):
+            
 
 
 
@@ -567,15 +708,24 @@ class Checker:
         self.scope=Scope(values={})#global scope
         self.SymbolCollection()
         #register global constants and functions
-
+        self.FunctionDefinitions["print_i32"]=FunctionInfo(name="print_i32",self=None,returnType=None,paramNames=['a'],params=[Variable(mut=False,mut_blocked=False,left=True,type='i32',name='print_i32@a')],body=None)
+        self.FunctionDefinitions["println_i32"]=FunctionInfo(name="println_i32",self=None,returnType=None,paramNames=['a'],params=[Variable(mut=False,mut_blocked=False,left=True,type='i32',name='println_i32@a')],body=None)
+        self.FunctionDefinitions["get_i32"]=FunctionInfo(name="get_i32",self=None,returnType=Object(type='i32'),paramNames=[],params=[],body=None)           
         for name in self.FunctionDefinitions:
+            self.scope.register(name,Variable(mut=False,mut_blocked=False,left=False,type=f'#{name}',name=name))
+        for name in self.ConstValues:
+            self.scope.register(name,Variable(mut=False,mut_blocked=False,left=True,type=self.ConstValues[name].type,name=name))
+        for name in self.FunctionDefinitions:
+            if name in ['print_i32','println_i32','get_i32']:
+                continue
             functionInfo=self.FunctionDefinitions[name]
             function_scope=Scope(values=functionInfo.params,parent=self.scope)
             if functionInfo.self:
                 if not functionInfo.self.amp:
-                    function_scope.values["self"]=Variable(mut=functionInfo.self.mut,name=name+"@self",value=None,type=name,left=True)
+                    function_scope.values["self"]=Variable(mut=functionInfo.self.mut,mut_blocked=False,name=name+"@self",value=None,type=name,left=True)
                 else:
-                    function_scope.values["self"]=Variable(mut=False,name=name+"@self",value=None,type=('&mut' if functionInfo.self.mut else '& ')+name,left=True)
+                    function_scope.values["self"]=Variable(mut=functionInfo.self.mut,mut_blocked=not functionInfo.self.mut,name=name+"@self",value=None,type=('&mut' if functionInfo.self.mut else '& ')+name,left=True)
+            self.functionName=name
             self.ParseBlockExpression(function_scope,functionInfo.body,name+"@",expected=functionInfo.returnType,impl=name[:name.index("::")] if "::" in name else None)
         
 
