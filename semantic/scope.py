@@ -41,35 +41,44 @@ class Vec(Object):#Vec<T>, supports new,len,is_empty,push,remove
 
 @dataclass
 class Reference(Object):# &T
-    value: Object
+    addr: str #the name of the variable it points to.
     mut:bool #whether mutable reference
 
 @dataclass
-class Variable:
-    mut: bool
-    value: Object
+class Type:
+    mut:bool
+    mut_blocked:bool #used for reference
+    left:bool #whether left value
+    type:str #function starts with #
+
+@dataclass
+class Variable(Type):#every variable（including function) has a name!
+    name: str
 
 @dataclass
 class FunctionInfo:
     name: str
     self: ast_nodes.SelfParam
     returnType: Object
-    params: dict[str,Variable]#can be mutable
+    paramNames: list[str]
+    params: list[Variable]#can be mutable
     body: ast_nodes.BlockExpression
 
 
 @dataclass
 class Scope:
-    values: dict[str,Variable]
+    values: dict[str,Variable]#functions sit in global scope
     parent: Scope=None
-    def registered(self,name: str): #check registered in advance
+    def registered(self,name: str): 
         scope=self
         while scope!=None and scope.values.get(name)==None:
             scope=scope.parent
         return scope
     
-    def register(self,name: str, mut: bool, value: Object): #check registered in advance
-        self.values[name]=Variable(mut=mut,value=value)
+    def register(self,name:str,variable:Variable): #check registered in advance
+        if self.values.get(name):
+            raise SemanticError(f"name already registered! {name}")
+        self.values[name]=variable
 
     def get(self,name: str):
         scope=self.registered(name)

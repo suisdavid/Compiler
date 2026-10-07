@@ -32,7 +32,12 @@ class GenericParams: #discarded
     pass
 
 @dataclass
-class TypeRef:
+class Expression:
+    pass
+
+
+@dataclass
+class TypeRef(Expression):
     pass
 
 
@@ -81,8 +86,6 @@ class FunctionParameters:
     parameters: list[FunctionParam]
 
 
-
-
 @dataclass
 class StructDefinition(Item):
     outerAttributes: list[str]
@@ -92,20 +95,12 @@ class StructDefinition(Item):
     fields: list[StructField]
 
 
-
-
-
 @dataclass
 class InherentImpl(Item):
    # genericParams: GenericParams
     typeRef: TypeRef
    # whereClause: WhereClause
     associatedItems: list[Item]#constantItem or functionDefinition
-    pass
-
-@dataclass
-class Expression:
-    pass
 
 @dataclass
 class StructExprField:
@@ -127,7 +122,7 @@ class StatementExpression(Expression):
 
 @dataclass
 class PrimitiveExpression(StatementExpression):
-    op: str
+    op: str #and, or, &,|,^, assignment, comparison
     expressions: list[Expression]
 
 @dataclass
@@ -165,7 +160,7 @@ class BracketSuffix(PostfixSuffix):
     expression: Expression
 
 @dataclass
-class PostfixExpression():
+class PostfixExpression(Expression):
     primaryExpression: PrimaryExpression
     postfixSuffixes: list[PostfixSuffix]
 

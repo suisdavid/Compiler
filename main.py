@@ -43,7 +43,7 @@ if __name__=="__main__":
         sys.exit(1)
     checker=Checker(crate)
     try:
-        checker.SymbolCollection()
+        checker.SemanticCheck()
     except SemanticError as e:
         print(e.errormessage)
         sys.exit(1)

@@ -1044,19 +1044,19 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#nonBlockPrimary.
     def visitNonBlockPrimary(self, ctx:Parser.NonBlockPrimaryContext):
         if ctx.literalExpression():
-            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.literalExpression()),type="literal",structExprFields=[])
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.literalExpression()),type="literal",structExprFields=None)
         elif ctx.LPAREN():
-            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.expression()) if ctx.expression() else None,type="paren",structExprFields=[])
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.expression()) if ctx.expression() else None,type="paren",structExprFields=None)
         elif ctx.arrayExpression():
-            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.arrayExpression()),type="array",structExprFields=[])
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.arrayExpression()),type="array",structExprFields=None)
         elif ctx.BREAK():
-            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.expression()) if ctx.expression() else None,type="break",structExprFields=[])
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.expression()) if ctx.expression() else None,type="break",structExprFields=None)
         elif ctx.RETURN():
-            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.expression()) if ctx.expression() else None,type="return",structExprFields=[])
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.expression()) if ctx.expression() else None,type="return",structExprFields=None)
         elif ctx.CONTINUE():
-            return ast_nodes.NonBlockPrimary(expression=None,type="continue",structExprFields=[])
+            return ast_nodes.NonBlockPrimary(expression=None,type="continue",structExprFields=None)
         else:#PATH
-            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.pathInExpression()),type="path",structExprFields=self.visit(ctx.structExprFields()) if ctx.structExprFields() else [])
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.pathInExpression()),type="path",structExprFields=self.visit(ctx.structExprFields()) if ctx.structExprFields() else None)
 
 
     # Visit a parse tree produced by Parser#conditionPrimary.
@@ -1147,9 +1147,13 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#unaryOperator.
     def visitUnaryOperator(self, ctx:Parser.UnaryOperatorContext):
         if ctx.AMP() or ctx.ANDAND():
-            return ('&' if ctx.AMP() else '&&')+('@' if ctx.MUT() else '')#@ for MUT
-        else:
-            return ctx.getText()
+            return ('&' if ctx.AMP() else '&&')+('mut' if ctx.MUT() else '')
+        elif ctx.MINUS():
+            return "minus"
+        elif ctx.NOT():
+            return "!"
+        elif ctx.STAR():
+            return "star"
 
 
     # Visit a parse tree produced by Parser#multiplicativeOperator.
