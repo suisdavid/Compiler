@@ -178,8 +178,13 @@ class CastExpression(Expression):
     unaryExpression: UnaryExpression
     typeRefs: list[TypeRef]
 
+
 @dataclass
-class ExpressionWithBlock(PrimaryExpression):
+class ConditionPrimary(PrimaryExpression):
+    pass
+
+@dataclass
+class ExpressionWithBlock(ConditionPrimary):
     pass
 
 @dataclass 
@@ -188,9 +193,6 @@ class NonBlockPrimary(PrimaryExpression):
     type: str
     structExprFields: list[StructExprField]
 
-@dataclass
-class ConditionPrimary(PrimaryExpression):
-    pass
 
 @dataclass
 class BlockExpression(ConditionPrimary):
@@ -202,10 +204,6 @@ class WhileExpression(Expression):
     conditionExpression: Expression 
     blockExpression: BlockExpression
 
-@dataclass
-class ConditionPrimaryWithoutBareBlock(ConditionPrimary):
-    expression: Expression
-    type: str
 
 @dataclass 
 class NormalExpressionWithBlock(ExpressionWithBlock):

@@ -21,11 +21,14 @@ class Checker:
         self.StructLocations={}#identifier->(type:str,StructDefinition)
         self.FunctionLocations={}#identifier->(type:str,FunctionDefinition)
         self.vis={}#use in dfs
-    def GetArrayInner(self,s:str):
-        idx=len(s)-1
-        while s[idx]!=';':
+    def GetArrayInner(self,type:str):
+        idx=len(type)-1
+        while type[idx]!=';':
             idx-=1
-        return s[1:idx]
+        return type[1:idx],int(type[idx+1:-1])
+
+    def trydefer1(self,type:str):
+        return type[2:] if type.startswith("& ") else type
     
     def RegisterConstant(self, constant: ast_nodes.ConstantItem,impl=None):
         if impl==None and constant.identifier in ["get_i32", "print_i32","println_i32"]:
@@ -257,7 +260,7 @@ class Checker:
                 else:
                     type=type[2:]
             elif type.startswith("["):
-                type=self.GetArrayInner(type)
+                type,_=self.GetArrayInner(type)
             elif type.startswith("Box<") or type.startswith("Vec<"):
                 if attribute=="Copy":
                     return False
@@ -325,40 +328,60 @@ class Checker:
                 if not self.CanTransform(type1.type,type0.type):
                     raise SemanticError(f"different types cannot transform! {type0.type}<-{type1.type}")
             elif op in ['+=','-=','*=','/=','%=']:
-                if type0.type not in self.integers or type1.type!=type0.type:
+                if type0.type not in self.integers or self.trydefer1(type1.type)!=type0.type:
                     raise SemanticError(f"not integer types! {type0.type} {op} {type1.type}")
             elif op in ['&=','^=','|=']:
-                if type0.type not in self.basicTypes or type1.type!=type0.type:
+                if type0.type not in self.basicTypes or self.trydefer1(type1.type)!=type0.type:
                     raise SemanticError(f"not integer or boolean types! {type0.type} {op} {type1.type}")  
             elif op in ['<<=','>>=']:
-                if type0.type not in self.integers or type1 not in self.integers:
+                if type0.type not in self.integers or self.trydefer1(type1.type) not in self.integers:
                     raise SemanticError(f"not integer types! {type0.type} {op} {type1.type}")
+            return Type(mut=False,mut_blocked=False,left=False,type="()")
         elif op in self.comparisonOps:
             if op in ['==','!=']:
                 if type0.type!=type1.type or not self.CheckAttribute(type0.type,'PartialEq'):
                     raise SemanticError(f"cannot compare! {type0.type} {op} {type1.type}")
             elif op in ['<', '<=','>', '>=']:
-                if type0.type not in self.basicTypes or type1.type!=type0.type:
-                    raise SemanticError(f"cannot compare! {type0.type} {op} {type1.type}")
+                a,b=type0.type,type1.type
+                while True:
+                    if b.startswith("&mut "):
+                        if a.startswith("&"):
+                            a=a[2:] if a.startwith("& ") else a[5:]
+                            b=b[5:]
+                        else:
+                            raise SemanticError(f"cannot compare! {type0.type} {op} {type1.type}")
+                    elif b.startswith("& "):
+                        if a.startswith("&"):
+                            a=a[2:]
+                            b=b[2:]
+                        else:
+                            raise SemanticError(f"cannot compare! {type0.type} {op} {type1.type}")
+                    else:
+                        if a not in self.basicTypes or b!=a:
+                            raise SemanticError(f"cannot compare! {type0.type} {op} {type1.type}") 
+                        break
+            return Type(mut=False,mut_blocked=False,left=False,type="bool")
         elif op in self.logicOps:
             if type0.type !='bool' or type1.type!='bool':
                 raise SemanticError(f"cannot logic! {type0.type} {op} {type1.type}")
+            return Type(mut=False,mut_blocked=False,left=False,type="bool")
         elif op in self.arithmeticOps:
             if op in ["+","-", "*","/", "%"]:
-                if type0.type not in self.integers or type1.type!=type0.type:
+                if self.trydefer1(type0.type) not in self.integers or self.trydefer1(type1.type)!=self.trydefer1(type0.type):
                     raise SemanticError(f"not integer types! {type0.type} {op} {type1.type}")
             elif op in ["&","|","^"]:
-                if type0.type not in self.basicTypes or type1.type!=type0.type:
+                if self.trydefer1(type0.type) not in self.basicTypes or self.trydefer1(type1.type)!=self.trydefer1(type0.type):
                     raise SemanticError(f"not integer or boolean types! {type0.type} {op} {type1.type}")
             elif op in ["<<",">>"]:
-                if type0.type not in self.integers or type1 not in self.integers:
+                if self.trydefer1(type0.type) not in self.integers or self.trydefer1(type1.type) not in self.integers:
                     raise SemanticError(f"not integer types! {type0.type} {op} {type1.type}")
+            return Type(mut=False,mut_blocked=False,left=False,type=self.trydefer1(type0.type))
         elif op in self.unaryOps:
             if op=='!':
-                if type0.type not in self.basicTypes:
+                if self.trydefer1(type0.type) not in self.basicTypes:
                     raise SemanticError(f"not integer or boolean types! {op} {type0.type}")
             elif op=='minus':
-                if type0.type not in ['i32','isize']:
+                if self.trydefer1(type0.type) not in ['i32','isize']:
                     raise SemanticError(f"cannot minus! {op} {type0.type}")
             elif op=='star':
                 if not type0.type.startswith("&") and not type0.type.startswith("Box<"):
@@ -380,6 +403,7 @@ class Checker:
                 type0.mut=False
                 type0.left=False
                 type0.type='&mut ' if 'mut' in op else '& '+type0.type
+            return type0
     def CheckVecBox(self,VecBox:str,func_name:str,scope:Scope,arguments:str,innerType:str,directCall=False,impl=None,inloop="",type0:Type=None):#return Type
         if VecBox=="Vec":
             if func_name=='new':
@@ -453,26 +477,24 @@ class Checker:
     def ParseExpression(self,scope:Scope,expression:ast_nodes.Expression,expected:str=None,impl=None,inloop=""):#return Type
         if isinstance(expression,ast_nodes.PrimitiveExpression):
             if expression.op in self.assignmentOps:#assignment
-                if expected and expected!="()":
+                if expected and not self.CanTransform("()",expected):
                     raise SemanticError(f"expression type error! () != {expected}")
                 type0=self.ParseExpression(scope,expression.expressions[0],impl=impl,inloop=inloop)
                 type1=self.ParseExpression(scope,expression.expressions[1],type0.type if expression.op=='=' else None,impl=impl,inloop=inloop)
-                self.CheckOp(type0,type1,expression.op)
-                return Type(mut=False,mut_blocked=False,left=False,type="()")
+                return self.CheckOp(type0,type1,expression.op)
             elif expression.op in self.comparisonOps:
-                if expected and expected!="bool":
+                if expected and not self.CanTransform("bool",expected):
                     raise SemanticError(f"expression type error! bool != {expected}")
                 type0=self.ParseExpression(scope,expression.expressions[0],impl=impl,inloop=inloop)
                 type1=self.ParseExpression(scope,expression.expressions[1],impl=impl,inloop=inloop)
-                self.CheckOp(type0,type1,expression.op)
-                return Type(mut=False,mut_blocked=False,left=False,type="bool")
+                return self.CheckOp(type0,type1,expression.op)
             elif expression.op in self.logicOps or expression.op in self.arithmeticOps:
                 type0=self.ParseExpression(scope,expression.expressions[0],impl=impl,inloop=inloop)
                 for i in range(1,len(expression.expressions)):
                     type1=self.ParseExpression(scope,expression.expressions[i],impl=impl,inloop=inloop)
-                    self.CheckOp(type0,type1,expression.op)
+                    type0=self.CheckOp(type0,type1,expression.op)
                 type='bool' if expression.op in self.logicOps else type0.type
-                if expected and expected!=type:
+                if expected and not self.CanTransform(type,expected):
                     raise SemanticError(f"expression type error! {type} != {expected}")
                 return Type(mut=False,mut_blocked=False,left=False,type=type)
 
@@ -488,7 +510,7 @@ class Checker:
                     self.CheckOp(type,None,'&')
                 else:
                     self.CheckOp(type,None,op)
-            if expected and expected!=type.type:
+            if expected and not self.CanTransform(type.type,expected):
                 raise SemanticError(f"expression type error! {type.type} != {expected}")
             return type
 
@@ -499,7 +521,7 @@ class Checker:
                 if type0.type not in self.basicTypes or type1 not in self.integers:
                     raise SemanticError(f"cannot cast! {type0.type} as {type1}")
                 type0.type=type1
-            if expected and expected!=type0.type:
+            if expected and not self.CanTransform(type.type,expected):
                 raise SemanticError(f"expression type error! {type0.type} != {expected}")
             return type0
 
@@ -539,9 +561,10 @@ class Checker:
                     else:
                         raise SemanticError(f"not function! {type0.type}")
                 elif isinstance(suffix,ast_nodes.BracketSuffix):
-                    if type0.type.startswith("Vec<") or type0.type.startswith("["):
+                    type=self.dereference(type0.type)
+                    if type.startswith("Vec<") or type.startswith("["):
                          self.ParseExpression(scope,suffix.expression,expected='usize',impl=impl,inloop=inloop)
-                         type0=Type(mut=type0.mut,mut_blocked=type0.mut_blocked if type0.type.startswith("[") else (type0.mut_blocked or not type0.mut),left=True,type=self.GetArrayInner(type0.type) if type0.type.startswith("[") else type0.type[4:-1])
+                         type0=Type(mut=type0.mut,mut_blocked=type0.mut_blocked if type.startswith("[") else (type0.mut_blocked or not type0.mut),left=True,type=self.GetArrayInner(type)[0] if type.startswith("[") else type[4:-1])
                     else:
                         raise SemanticError(f"not array! {type0.type}")
                 elif isinstance(suffix,ast_nodes.DotSuffix):
@@ -582,6 +605,8 @@ class Checker:
                                 for i in range(1,len(arguments.expressions)):
                                     self.ParseExpression(scope,arguments.expressions[i],expected=func.params[i-1].type,impl=impl,inloop=inloop)
                                 type0=Type(mut=False,mut_blocked=False,left=False,type=func.returnType.type if func.returnType else "()")
+            if expected and not self.CanTransform(type0.type,expected):
+                raise SemanticError(f"expression type error! {type0.type} != {expected}")
             return type0
 
 
@@ -615,7 +640,7 @@ class Checker:
                                 raise SemanticError(f"invalid use of Self!")
                             name=(impl if typePathSegments[0].identifier=="Self" else typePathSegments[0].identifier)+"::"+name
                         var=scope.get(name)#reference by name,may be function or variable
-                        if expected and expected!=var.type:
+                        if expected and not self.CanTransform(var.type,expected):
                             raise SemanticError(f"expression type error! {var.type} != {expected}")
                         return Type(mut=var.mut,mut_blocked=var.mut_blocked,left=var.left,type=var.type)
                 else:#build Struct
@@ -634,6 +659,8 @@ class Checker:
                         if not structField:
                             raise SemanticError(f"invalid arg name {arg.identifer} for struct {struct.type}")
                         self.ParseExpression(scope,arg.expression,expected=structField.type,impl=impl,inloop=inloop)
+                    if expected and not self.CanTransform(typePathSegments[0].identifier,expected):
+                        raise SemanticError(f"expression type error! {typePathSegments[0].identifier} != {expected}")
                     return Type(mut=False,mut_blocked=False,left=False,type=typePathSegments[0].identifier)
                           
 
@@ -641,10 +668,12 @@ class Checker:
                 if expression.expression:
                     return self.ParseExpression(scope,expression.expression,expected=expected,impl=impl,inloop=inloop)
                 else:
+                    if expected and not self.CanTransform("()",expected):
+                        raise SemanticError(f"expression type error! () != {expected}")
                     return Type(mut=False,mut_blocked=False,left=False,type="()")
             elif expression.type=='array':
                 return self.ParseExpression(scope,expression.expression,expected=expected,impl=impl,inloop=inloop)
-            elif expression.type=='break':
+            elif expression.type=='break':#not yet
                 if inloop.startswith("loop") or (expression.expression and inloop.startswith("while")):
                     loop_expectancy=inloop[4:] if inloop.startswith("loop") else inloop[5:]
                     if expression.expression:
@@ -659,11 +688,11 @@ class Checker:
                 retType=self.FunctionDefinitions.get(self.functionName).returnType
                 type=retType.type if retType else "()"
                 if expression.expression:
-                    return self.ParseExpression(scope,expression.expression,expected=type,impl=impl,inloop=inloop)
+                    self.ParseExpression(scope,expression.expression,expected=type,impl=impl,inloop=inloop)
                 else:#return ()
-                    if type and type!="()":
+                    if type and not self.CanTransform("()",type):
                         raise SemanticError(f"function return type error! () != {type}")
-                    return Type(mut=False,mut_blocked=False,left=False,type="^")
+                return Type(mut=False,mut_blocked=False,left=False,type="^")
             elif expression.type=='continue':
                 if not (inloop.startswith("loop") or inloop.startswith("while")):
                     raise SemanticError("continue outside loop!")
@@ -696,12 +725,12 @@ class Checker:
                         raise SemanticError(f"type {type0.type} and type {type1.type} cannot transform!")
             else:
                 self.ParseExpression(Scope(values={},parent=scope),expression.thenExpressions[0],expected="()",impl=impl,inloop=inloop)
-                if expected and expected=="()":
+                if expected and not self.CanTransform("()",expected):
                     raise SemanticError(f"expression type error! () != {expected}")
                 return Type(mut=False,mut_blocked=False,left=False,type="()")
 
 
-        elif isinstance(expression,ast_nodes.BlockExpression):
+        elif isinstance(expression,ast_nodes.BlockExpression):#not yet
             never=False
             for statement in expression.statements:
                 never|=self.ParseStatement(scope,statement,impl=impl,inloop=inloop)#whether never
@@ -711,11 +740,64 @@ class Checker:
             elif ret:
                 return ret
             else:
-                if expected and expected!="()":
+                if expected and not self.CanTransform("()",expected):
                     raise SemanticError(f"expression type error! () != {expected}")
                 return Type(mut=False,mut_blocked=False,left=False,type="()")
-        elif isinstance(expression,ast_nodes.NormalArrayExpresssion):
             
+        elif isinstance(expression,ast_nodes.NormalArrayExpresssion):
+            if expected:
+                type=self.dereference(expected)
+                if type[0]!='[':
+                    raise SemanticError("not Array type!")
+                innerType,num=self.GetArrayInner(type)
+                if num!=len(expression.expressions):
+                    raise SemanticError(f"Array length doesn't align! {num}!={len(expression.expressions)} !")
+                for each in expression.expressions:
+                    self.ParseExpression(scope,each,expected=innerType,impl=impl,inloop=inloop)
+                return Type(mut=False,mut_blocked=False,left=False,type=expected)
+            else:
+                if len(expression.expressions)==0:
+                    return Type(mut=False,mut_blocked=False,left=False,type="[;0]")
+                else:
+                    type0=self.ParseExpression(scope,expression.expressions[0],impl=impl,inloop=inloop)
+                    for i in range(1,len(expression.expressions)):
+                        type1=self.ParseExpression(scope,expression.expressions[0],impl=impl,inloop=inloop)
+                        if self.CanTransform(type0,type1):
+                            type0=type1
+                        elif not self.CanTransform(type1,type0):
+                            raise SemanticError(f"types in array are not identical! {type0}!={type1}")
+                    return Type(mut=False,mut_blocked=False,left=False,type=f"[{type0};{len(expression.expressions)}]")
+
+        elif isinstance(expression,ast_nodes.RepeatArrayExpression):
+            length=self.ParseConst(expression.length,mustbe='usize',impl=impl)
+            if expected:
+                type=self.dereference(expected)
+                if type[0]!='[':
+                    raise SemanticError("not Array type!")
+                innerType,num=self.GetArrayInner(type)
+                if num!=length:
+                    raise SemanticError(f"Array length doesn't align! {num}!={length}!")
+                self.ParseExpression(scope,expression.expression,expected=innerType,impl=impl,inloop=inloop)
+                return Type(mut=False,mut_blocked=False,left=False,type=expected)
+            else:
+                type0=self.ParseExpression(scope,expression.expression,impl=impl,inloop=inloop)
+                return Type(mut=False,mut_blocked=False,left=False,type=f"[{type0};{length}]")
+
+        elif isinstance(expression,ast_nodes.LiteralExpression):
+            if expected:
+                if (expression.type and self.CanTransform(expression.type,expected)) or (not expression.type and expected in self.integers):
+                    return Type(mut=False,mut_blocked=False,left=False,type=expected)
+                else:
+                    raise SemanticError(f"expression type error! () != {expression.type}")
+            else:
+                return Type(mut=False,mut_blocked=False,left=False,type=expression.type if expression.type else 'i32')
+
+    
+
+        
+                            
+                
+
 
         
 

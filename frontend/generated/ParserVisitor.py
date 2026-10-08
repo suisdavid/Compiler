@@ -1068,26 +1068,23 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#conditionPrimaryWithoutBareBlock.
     def visitConditionPrimaryWithoutBareBlock(self, ctx:Parser.ConditionPrimaryWithoutBareBlockContext):
         if ctx.literalExpression():
-            return ast_nodes.ConditionPrimaryWithoutBareBlock(expression=self.visit(ctx.literalExpression()),type="literal")
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.literalExpression()),type="literal",structExprFields=None)
         elif ctx.LPAREN():
-            return ast_nodes.ConditionPrimaryWithoutBareBlock(expression=self.visit(ctx.expression()) if ctx.expression() else None,type="paren")
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.expression()) if ctx.expression() else None,type="paren",structExprFields=None)
         elif ctx.arrayExpression():
-            return ast_nodes.ConditionPrimaryWithoutBareBlock(expression=self.visit(ctx.arrayExpression()),type="array")
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.arrayExpression()),type="array",structExprFields=None)
         elif ctx.BREAK():
-            return ast_nodes.ConditionPrimaryWithoutBareBlock(expression=self.visit(ctx.conditionBreakExpression()) if ctx.conditionBreakExpression() else None,type="break")
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.conditionBreakExpression()) if ctx.conditionBreakExpression() else None,type="break",structExprFields=None)
         elif ctx.RETURN():
-            return ast_nodes.ConditionPrimaryWithoutBareBlock(expression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None,type="return")
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None,type="return",structExprFields=None)
         elif ctx.CONTINUE():
-            return ast_nodes.ConditionPrimaryWithoutBareBlock(expression=None,type="continue")
-        elif ctx.ifExpression():
-            return ast_nodes.ConditionPrimaryWithoutBareBlock(expression=self.visit(ctx.ifExpression()),type="if")
-        elif ctx.LOOP():
-            return ast_nodes.ConditionPrimaryWithoutBareBlock(expression=self.visit(ctx.blockExpression()),type="loop")
-        elif ctx.WHILE():
-            return ast_nodes.ConditionPrimaryWithoutBareBlock(expression=ast_nodes.WhileExpression(conditionExpression=self.visit(ctx.conditionExpression()),blockExpression=self.visit(ctx.blockExpression())),type="while")
+            return ast_nodes.NonBlockPrimary(expression=None,type="continue",structExprFields=None)
+        if ctx.ifExpression():
+            return self.visit(ctx.ifExpression())
+        elif ctx.LOOP() or ctx.WHILE():
+            return ast_nodes.NormalExpressionWithBlock(blockExpression=self.visit(ctx.blockExpression()),loop=ctx.LOOP() or ctx.WHILE(),conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)   
         else:#PATH
-            return ast_nodes.ConditionPrimaryWithoutBareBlock(expression=self.visit(ctx.pathInExpression()),type="path")
-        
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.pathInExpression()),type="path",structExprFields=self.visit(ctx.structExprFields()) if ctx.structExprFields() else None)
 
 
     # Visit a parse tree produced by Parser#literalExpression.
