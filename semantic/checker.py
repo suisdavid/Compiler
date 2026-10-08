@@ -448,7 +448,8 @@ class Checker:
             else:
                 raise SemanticError(f"No such function {func_name} in Box<T>!")
 
-    #inloop: "if"+type,"while"+type,"loop"+type,""
+    #inloop: "while"+type,"loop"+type,""
+    #expected: ""/None: no expectancy; (): expect (); ^: expect Never
     def ParseExpression(self,scope:Scope,expression:ast_nodes.Expression,expected:str=None,impl=None,inloop=""):#return Type
         if isinstance(expression,ast_nodes.PrimitiveExpression):
             if expression.op in self.assignmentOps:#assignment
@@ -633,6 +634,7 @@ class Checker:
                         if not structField:
                             raise SemanticError(f"invalid arg name {arg.identifer} for struct {struct.type}")
                         self.ParseExpression(scope,arg.expression,expected=structField.type,impl=impl,inloop=inloop)
+                    return Type(mut=False,mut_blocked=False,left=False,type=typePathSegments[0].identifier)
                           
 
             elif expression.type=='paren':
@@ -665,11 +667,59 @@ class Checker:
             elif expression.type=='continue':
                 if not (inloop.startswith("loop") or inloop.startswith("while")):
                     raise SemanticError("continue outside loop!")
-            return type0
+                return Type(mut=False,mut_blocked=False,left=False,type="^")
 
         elif isinstance(expression,ast_nodes.NormalExpressionWithBlock):
+            newscope=Scope(values={},parent=scope)
+            if expression.loop:
+                if expression.conditionExpression:#while
+                    self.ParseExpression(scope,expression.conditionExpression,expected="bool",impl=impl,inloop=inloop)
+                    return self.ParseExpression(newscope,expression.blockExpression,expected=expected,impl=impl,inloop="while"+(expected if expected else ""))
+                else:#loop
+                    return self.ParseExpression(newscope,expression.blockExpression,expected=expected,impl=impl,inloop="loop"+(expected if expected else ""))
+            else:
+                return self.ParseExpression(newscope,expression.blockExpression,expected=expected,impl=impl,inloop=inloop)
+
         elif isinstance(expression,ast_nodes.IfExpression):
+            self.ParseExpression(scope,expression.conditionExpression,expected="bool",impl=impl,inloop=inloop)
+            if len(expression.thenExpressions)==2:
+                type0=self.ParseExpression(Scope(values={},parent=scope),expression.thenExpressions[0],expected=expected,impl=impl,inloop=inloop)
+                type1=self.ParseExpression(Scope(values={},parent=scope),expression.thenExpressions[1],expected=expected,impl=impl,inloop=inloop)
+                if expected:
+                    return Type(mut=False,mut_blocked=False,left=False,type=expected)
+                else:
+                    if self.CanTransform(type1.type,type0.type):
+                        return Type(mut=False,mut_blocked=False,left=False,type=type0.type)
+                    elif self.CanTransform(type0.type,type1.type):
+                        return Type(mut=False,mut_blocked=False,left=False,type=type1.type)
+                    else:
+                        raise SemanticError(f"type {type0.type} and type {type1.type} cannot transform!")
+            else:
+                self.ParseExpression(Scope(values={},parent=scope),expression.thenExpressions[0],expected="()",impl=impl,inloop=inloop)
+                if expected and expected=="()":
+                    raise SemanticError(f"expression type error! () != {expected}")
+                return Type(mut=False,mut_blocked=False,left=False,type="()")
+
+
+        elif isinstance(expression,ast_nodes.BlockExpression):
+            never=False
+            for statement in expression.statements:
+                never|=self.ParseStatement(scope,statement,impl=impl,inloop=inloop)#whether never
+            ret=self.ParseExpression(scope,expression.statementexpression,expected=expected,impl=impl,inloop=inloop) if expression.statementexpression else None
+            if never:
+                return Type(mut=False,mut_blocked=False,left=False,type="^")
+            elif ret:
+                return ret
+            else:
+                if expected and expected!="()":
+                    raise SemanticError(f"expression type error! () != {expected}")
+                return Type(mut=False,mut_blocked=False,left=False,type="()")
+        elif isinstance(expression,ast_nodes.NormalArrayExpresssion):
             
+
+        
+
+
 
 
 
@@ -691,18 +741,17 @@ class Checker:
                 
 
                 
-    def ParseLetStatement(self,scope:Scope,statement:ast_nodes.LetStatement,prefix:str,impl=None,inloop=""):
-        type=self.ParseTypeRef(statement.typeRef).type if statement.typeRef else None
-        variable=Variable(mut=statement.mut,name=prefix+statement.identifier,type=type,left=True)
-        newtype=self.ParseExpression(scope,statement.value,expected=type,impl=impl,inloop=inloop)
-        variable.type=newtype.type
-        scope.register(statement.identifier,variable)
-
-    
-    def ParseBlockExpression(self,scope:Scope,block:ast_nodes.BlockExpression,prefix:str,expected=None,impl=None,inloop=""):#prefix is used for variable renaming
-        for statement in block.statements:
-            if isinstance(statement,ast_nodes.LetStatement):
-                self.ParseLetStatement(scope,statement,prefix,impl=impl,inloop=inloop)
+    def ParseStatement(self,scope:Scope,statement:ast_nodes.Statement,prefix:str,impl=None,inloop=""):
+        if isinstance(statement,ast_nodes.LetStatement):
+            type=self.ParseTypeRef(statement.typeRef).type if statement.typeRef else None
+            variable=Variable(mut=statement.mut,name=prefix+statement.identifier,type=type,left=True)
+            newtype=self.ParseExpression(scope,statement.value,expected=type,impl=impl,inloop=inloop)
+            variable.type=newtype.type
+            scope.register(statement.identifier,variable)
+        else:
+            if statement.expression:
+                self.ParseExpression(scope,statement.expression,impl=impl,inloop=inloop)
+            return False
 
     def SemanticCheck(self):
         self.scope=Scope(values={})#global scope
@@ -726,7 +775,7 @@ class Checker:
                 else:
                     function_scope.values["self"]=Variable(mut=functionInfo.self.mut,mut_blocked=not functionInfo.self.mut,name=name+"@self",value=None,type=('&mut' if functionInfo.self.mut else '& ')+name,left=True)
             self.functionName=name
-            self.ParseBlockExpression(function_scope,functionInfo.body,name+"@",expected=functionInfo.returnType,impl=name[:name.index("::")] if "::" in name else None)
+            self.ParseExpression(function_scope,functionInfo.body,expected=functionInfo.returnType,impl=name[:name.index("::")] if "::" in name else None)
         
 
 

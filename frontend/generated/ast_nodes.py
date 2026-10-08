@@ -215,8 +215,8 @@ class NormalExpressionWithBlock(ExpressionWithBlock):
     
 @dataclass
 class IfExpression(ExpressionWithBlock):#switch expressions
-    conditionExpressions: list[Expression]
-    blockExpressions: list[BlockExpression]
+    conditionExpression: Expression
+    thenExpressions: list[Expression]
     #len(blockExpressions)= len(conditionExpressions) or len(conditionExpressions)+1
 
 @dataclass

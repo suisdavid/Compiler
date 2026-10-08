@@ -317,13 +317,11 @@ class ParserVisitor(ParseTreeVisitor):
     def visitIfExpression(self, ctx:Parser.IfExpressionContext):
         if ctx.ELSE():
             if ctx.ifExpression():
-                ifExpression=self.visit(ctx.ifExpression())
-                ifExpression=ast_nodes.IfExpression(conditionExpressions=[self.visit(ctx.conditionExpression())]+ifExpression.conditionExpressions,blockExpressions=[self.visit(ctx.blockExpression(0))]+ifExpression.blockExpressions)
+                return ast_nodes.IfExpression(conditionExpression=self.visit(ctx.conditionExpression()),thenExpressions=[self.visit(ctx.blockExpression(0)),self.visit(ctx.ifExpression())])
             else:
-                ifExpression=ast_nodes.IfExpression(conditionExpressions=[self.visit(ctx.conditionExpression())],blockExpressions=[self.visit(ctx.blockExpression(0)),self.visit(ctx.blockExpression(1))])         
+                return ast_nodes.IfExpression(conditionExpression=self.visit(ctx.conditionExpression()),thenExpression=[self.visit(ctx.blockExpression(0)),self.visit(ctx.blockExpression(1))])
         else:
-            ifExpression=ast_nodes.IfExpression(conditionExpressions=[self.visit(ctx.conditionExpression())],blockExpressions=[self.visit(ctx.blockExpression(0))])           
-        return ifExpression
+            return ast_nodes.IfExpression(conditionExpression=self.visit(ctx.conditionExpression()),thenExpressions=[self.visit(ctx.blockExpression(0))])           
 
 
     # Visit a parse tree produced by Parser#expression.
