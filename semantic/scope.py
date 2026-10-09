@@ -64,6 +64,11 @@ class FunctionInfo:
     params: list[Variable]#can be mutable
     body: ast_nodes.BlockExpression
 
+@dataclass
+class LoopContext:
+    loop:str #loop,while
+    has_break: bool
+    retType:str
 
 @dataclass
 class Scope:

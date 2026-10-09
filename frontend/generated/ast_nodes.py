@@ -165,10 +165,6 @@ class PostfixExpression(Expression):
     postfixSuffixes: list[PostfixSuffix]
 
 @dataclass
-class StatementPostfixExpression(PostfixExpression):
-    dotSuffix: DotSuffix
-
-@dataclass
 class UnaryExpression(Expression):
     ops: list[str]
     postfixExpression: PostfixExpression
@@ -198,11 +194,6 @@ class NonBlockPrimary(PrimaryExpression):
 class BlockExpression(ConditionPrimary):
     statements: list[Statement]
     statementexpression: Expression
-
-@dataclass 
-class WhileExpression(Expression):
-    conditionExpression: Expression 
-    blockExpression: BlockExpression
 
 
 @dataclass 

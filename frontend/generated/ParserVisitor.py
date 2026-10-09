@@ -1028,7 +1028,7 @@ class ParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by Parser#statementPostfixExpression.
     def visitStatementPostfixExpression(self, ctx:Parser.StatementPostfixExpressionContext):
-        return ast_nodes.StatementPostfixExpression(primaryExpression=self.visit(ctx.nonBlockPrimary() if ctx.nonBlockPrimary() else ctx.expressionWithBlock()),postfixSuffixes=[self.visit(ctx.postfixSuffix(i)) for i in range(len(ctx.postfixSuffix()))],dotSuffix=self.visit(ctx.dotSuffix()) if ctx.dotSuffix() else None)
+        return ast_nodes.PostfixExpression(primaryExpression=self.visit(ctx.nonBlockPrimary() if ctx.nonBlockPrimary() else ctx.expressionWithBlock()),postfixSuffixes=([self.visit(ctx.dotSuffix())] if ctx.dotSuffix() else [])+[self.visit(ctx.postfixSuffix(i)) for i in range(len(ctx.postfixSuffix()))])
 
 
     # Visit a parse tree produced by Parser#primaryExpression.
