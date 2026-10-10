@@ -7,10 +7,9 @@ fn second(x: i32) -> i32 {
 }
 
 fn f() -> i32 {
-    if true { 1 } else { 2 };
+    if true { 1 } else { 2 }
 }
 
-const Point:i32=5;
 impl Point {
     const OFFSET: i32 = -OFFSET;
     fn new(){

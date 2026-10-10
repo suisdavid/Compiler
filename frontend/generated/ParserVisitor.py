@@ -319,7 +319,7 @@ class ParserVisitor(ParseTreeVisitor):
             if ctx.ifExpression():
                 return ast_nodes.IfExpression(conditionExpression=self.visit(ctx.conditionExpression()),thenExpressions=[self.visit(ctx.blockExpression(0)),self.visit(ctx.ifExpression())])
             else:
-                return ast_nodes.IfExpression(conditionExpression=self.visit(ctx.conditionExpression()),thenExpression=[self.visit(ctx.blockExpression(0)),self.visit(ctx.blockExpression(1))])
+                return ast_nodes.IfExpression(conditionExpression=self.visit(ctx.conditionExpression()),thenExpressions=[self.visit(ctx.blockExpression(0)),self.visit(ctx.blockExpression(1))])
         else:
             return ast_nodes.IfExpression(conditionExpression=self.visit(ctx.conditionExpression()),thenExpressions=[self.visit(ctx.blockExpression(0))])           
 
@@ -1084,7 +1084,7 @@ class ParserVisitor(ParseTreeVisitor):
         elif ctx.LOOP() or ctx.WHILE():
             return ast_nodes.NormalExpressionWithBlock(blockExpression=self.visit(ctx.blockExpression()),loop=ctx.LOOP() or ctx.WHILE(),conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)   
         else:#PATH
-            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.pathInExpression()),type="path",structExprFields=self.visit(ctx.structExprFields()) if ctx.structExprFields() else None)
+            return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.pathInExpression()),type="path",structExprFields=None)
 
 
     # Visit a parse tree produced by Parser#literalExpression.
@@ -1136,7 +1136,7 @@ class ParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by Parser#callArguments.
     def visitCallArguments(self, ctx:Parser.CallArgumentsContext):
-        return [self.visit(ctx.expression(i)) for i in range(len(ctx.expression()))]
+        return ast_nodes.CallArguments(expressions=[self.visit(ctx.expression(i)) for i in range(len(ctx.expression()))])
 
 
     # Visit a parse tree produced by Parser#unaryOperator.

@@ -7,7 +7,7 @@ class Checker:
     assignmentOps=["+=","-=",">>=","<<=","/=","%=","*=","=","&=","|=","^="]
     comparisonOps=[">","<","==","!=","<=",">="]
     logicOps=["and","or"]
-    arithmeticOps=["+","-","*","/",'%',"<<",">>",'&',"|","^"]
+    arithmeticOps=["+","-","*","/",'%',"shift",'&',"|","^"]
     unaryOps=['minus','star','!','&','&mut']
 
     basicTypes=['i32','u32','usize','isize','bool']
@@ -151,7 +151,7 @@ class Checker:
                     raise SemanticError(f"{segment.identifier} not defined!")
         elif isinstance(typeref,ast_nodes.ReferenceType):
             T=self.ParseTypeRef(typeref.inner,impl=impl,typeonly=True)
-            return Reference(mut=typeref.mut,type='&'+('mut ' if typeref.mut else ' ')+T.type,name=None)
+            return Reference(mut=typeref.mut,type='&'+('mut ' if typeref.mut else ' ')+T.type,addr=None)
         elif isinstance(typeref,ast_nodes.ArrayType):
             T=self.ParseTypeRef(typeref.inner,impl=impl,typeonly=typeonly)
             length=self.ParseConst(typeref.length,mustbe='usize',impl=impl)
@@ -722,7 +722,8 @@ class Checker:
                     if not loopContext.has_break:
                         raise SemanticError("no break inside loop!")
                     return Type(mut=False,mut_blocked=False,left=False,type=expected if expected else loopContext.retType)
-            return self.ParseExpression(newscope,expression.blockExpression,expected=expected,impl=impl,inloop=inloop)
+            else:
+                return self.ParseExpression(newscope,expression.blockExpression,expected=expected,impl=impl,inloop=inloop)
 
         elif isinstance(expression,ast_nodes.IfExpression):
             self.ParseExpression(scope,expression.conditionExpression,expected="bool",impl=impl,inloop=inloop)
@@ -806,9 +807,9 @@ class Checker:
     def ParseStatement(self,scope:Scope,statement:ast_nodes.Statement,impl=None,inloop:LoopContext=None):
         if isinstance(statement,ast_nodes.LetStatement):
             type=self.ParseTypeRef(statement.typeRef).type if statement.typeRef else None
-            variable=Variable(mut=statement.mut,name=statement.identifier,type=type,left=True)
-            newtype=self.ParseExpression(scope,statement.value,expected=type,impl=impl,inloop=inloop)
-            variable=Variable(mut=statement.mut,name=statement.identifier,type=type if type else newtype,left=True)
+            variable=Variable(mut=statement.mut,mut_blocked=False,name=statement.identifier,type=type,left=True)
+            newtype=self.ParseExpression(scope,statement.value,expected=type,impl=impl,inloop=inloop).type
+            variable=Variable(mut=statement.mut,mut_blocked=False,name=statement.identifier,type=type if type else newtype,left=True)
             scope.register(statement.identifier,variable)
         else:
             if statement.expression:
@@ -829,14 +830,14 @@ class Checker:
             if name in ['print_i32','println_i32','get_i32']:
                 continue
             functionInfo=self.FunctionDefinitions[name]
-            function_scope=Scope(values=functionInfo.params,parent=self.scope)
+            function_scope=Scope(values=dict(zip(functionInfo.paramNames,functionInfo.params)),parent=self.scope)
             if functionInfo.self:
                 if not functionInfo.self.amp:
-                    function_scope.values["self"]=Variable(mut=functionInfo.self.mut,mut_blocked=False,name=name+"@self",value=None,type=name,left=True)
+                    function_scope.values["self"]=Variable(mut=functionInfo.self.mut,mut_blocked=False,name=name+"@self",type=name,left=True)
                 else:
-                    function_scope.values["self"]=Variable(mut=functionInfo.self.mut,mut_blocked=not functionInfo.self.mut,name=name+"@self",value=None,type=('&mut' if functionInfo.self.mut else '& ')+name,left=True)
+                    function_scope.values["self"]=Variable(mut=functionInfo.self.mut,mut_blocked=not functionInfo.self.mut,name=name+"@self",type=('&mut' if functionInfo.self.mut else '& ')+name,left=True)
             self.functionName=name
-            self.ParseExpression(function_scope,functionInfo.body,expected=functionInfo.returnType,impl=name[:name.index("::")] if "::" in name else None)
+            self.ParseExpression(function_scope,functionInfo.body,expected=functionInfo.returnType.type if functionInfo.returnType else "",impl=name[:name.index("::")] if "::" in name else None)
         
 
 

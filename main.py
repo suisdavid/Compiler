@@ -38,6 +38,7 @@ if __name__=="__main__":
         sys.exit(0)
     try:
         crate=ast_build(sys.argv[1])
+    #print(crate)
     except Exception as e:
         print("Parse Error!")
         sys.exit(1)

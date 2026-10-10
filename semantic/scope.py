@@ -72,7 +72,7 @@ class LoopContext:
 
 @dataclass
 class Scope:
-    values: dict[str,Variable]#functions sit in global scope
+    values: dict[str, Variable] #functions sit in global scope
     parent: Scope=None
     def registered(self,name: str): 
         scope=self
@@ -81,25 +81,16 @@ class Scope:
         return scope
     
     def register(self,name:str,variable:Variable): #check registered in advance
-        if self.values.get(name):
-            raise SemanticError(f"name already registered! {name}")
+       # if self.values.get(name):
+            #raise SemanticError(f"name already registered! {name}")
         self.values[name]=variable
 
     def get(self,name: str):
         scope=self.registered(name)
         if scope==None:
             raise SemanticError(f"name not registered! {name}")
-        return scope.values[name].value
+        return scope.values[name]
 
-    def update(self, name: str, value: Object):
-        scope=self.registered(name)
-        if scope==None:
-            raise SemanticError(f"name not registered! {name}")
-        if value.type!=scope.values[name].type:
-            raise SemanticError(f"wrong type! {value.type} != {self.values[name].type}")
-        if not scope.values[name].mut:
-            raise SemanticError(f"not mutable! {name}")
-        scope.values[name].value=value
 
 
 
