@@ -483,7 +483,10 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.unaryExpression():
             return self.visit(ctx.unaryExpression())
         castExpression=self.visit(ctx.castExpression())
-        return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
+        if isinstance(castExpression,ast_nodes.CastExpression):
+            return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
+        else:
+            return ast_nodes.CastExpression(unaryExpression=castExpression,typeRefs=[self.visit(ctx.closedCastType())])
 
 
     # Visit a parse tree produced by Parser#unaryExpression.
@@ -659,8 +662,12 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.conditionUnaryExpression():
             return self.visit(ctx.conditionUnaryExpression())
         castExpression=self.visit(ctx.conditionCastExpression())
-        return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
-                
+        if isinstance(castExpression,ast_nodes.CastExpression):
+            return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
+        else:
+            return ast_nodes.CastExpression(unaryExpression=castExpression,typeRefs=[self.visit(ctx.closedCastType())])   
+
+
     # Visit a parse tree produced by Parser#conditionUnaryExpression.
     def visitConditionUnaryExpression(self, ctx:Parser.ConditionUnaryExpressionContext):
         if ctx.unaryOperator():
@@ -840,8 +847,12 @@ class ParserVisitor(ParseTreeVisitor):
             return self.visit(ctx.conditionBreakUnaryExpression())
         else:
             castExpression=self.visit(ctx.conditionBreakCastExpression())
-            return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
-                
+            if isinstance(castExpression,ast_nodes.CastExpression):
+                return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
+            else:
+                return ast_nodes.CastExpression(unaryExpression=castExpression,typeRefs=[self.visit(ctx.closedCastType())])   
+    
+    
     # Visit a parse tree produced by Parser#conditionBreakUnaryExpression.
     def visitConditionBreakUnaryExpression(self, ctx:Parser.ConditionBreakUnaryExpressionContext):
         if ctx.unaryOperator():
@@ -1016,8 +1027,12 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.statementUnaryExpression():
             return self.visit(ctx.statementUnaryExpression())
         castExpression=self.visit(ctx.statementCastExpression())
-        return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
-                
+        if isinstance(castExpression,ast_nodes.CastExpression):
+            return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
+        else:
+            return ast_nodes.CastExpression(unaryExpression=castExpression,typeRefs=[self.visit(ctx.closedCastType())])   
+        
+           
     # Visit a parse tree produced by Parser#statementUnaryExpression.
     def visitStatementUnaryExpression(self, ctx:Parser.StatementUnaryExpressionContext):
         if ctx.unaryOperator():
