@@ -310,7 +310,7 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.ifExpression():
             return self.visit(ctx.ifExpression())
         else:
-            return ast_nodes.NormalExpressionWithBlock(blockExpression=self.visit(ctx.blockExpression()),loop=ctx.LOOP() or ctx.WHILE(),conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)
+            return ast_nodes.NormalExpressionWithBlock(blockExpression=self.visit(ctx.blockExpression()),loop=(ctx.LOOP() is not None) or (ctx.WHILE() is not None),conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)
 
 
     # Visit a parse tree produced by Parser#ifExpression.
@@ -396,7 +396,7 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#bitAndExpression.
     def visitBitAndExpression(self, ctx:Parser.BitAndExpressionContext):
         if len(ctx.shiftExpression())>1:
-            return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.shiftExpression(i)) for i in range(len(ctx.shiftExpression()))])
+            return ast_nodes.PrimitiveExpression(op="@",expressions=[self.visit(ctx.shiftExpression(i)) for i in range(len(ctx.shiftExpression()))])
         else:
             return self.visit(ctx.shiftExpression(0))
 
@@ -405,7 +405,7 @@ class ParserVisitor(ParseTreeVisitor):
     def visitClosedBitAndExpression(self, ctx:Parser.ClosedBitAndExpressionContext):
         if len(ctx.shiftExpression())==0:
             return self.visit(ctx.closedShiftExpression())
-        return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.shiftExpression(i)) for i in range(len(ctx.shiftExpression()))]+[self.visit(ctx.closedShiftExpression())])
+        return ast_nodes.PrimitiveExpression(op="@",expressions=[self.visit(ctx.shiftExpression(i)) for i in range(len(ctx.shiftExpression()))]+[self.visit(ctx.closedShiftExpression())])
         
 
 
@@ -494,14 +494,20 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.unaryOperator():
             unaryExpression=self.visit(ctx.unaryExpression())
             #quadratic time, may need to optimize!
-            return ast_nodes.UnaryExpression(ops=[self.visit(ctx.unaryOperator())]+unaryExpression.ops,postfixExpression=unaryExpression.postfixExpression)
-        return ast_nodes.UnaryExpression(ops=[],postfixExpression=self.visit(ctx.postfixExpression()))
+            if isinstance(unaryExpression,ast_nodes.UnaryExpression):
+                return ast_nodes.UnaryExpression(ops=[self.visit(ctx.unaryOperator())]+unaryExpression.ops,postfixExpression=unaryExpression.postfixExpression)
+            else:
+                return ast_nodes.UnaryExpression(ops=[self.visit(ctx.unaryOperator())],postfixExpression=unaryExpression)
+        return self.visit(ctx.postfixExpression())
         
 
 
     # Visit a parse tree produced by Parser#postfixExpression.
     def visitPostfixExpression(self, ctx:Parser.PostfixExpressionContext):
-        return ast_nodes.PostfixExpression(primaryExpression=self.visit(ctx.primaryExpression()),postfixSuffixes=[self.visit(ctx.postfixSuffix(i)) for i in range(len(ctx.postfixSuffix()))])
+        if len(ctx.postfixSuffix())==0:
+            return self.visit(ctx.primaryExpression())
+        else:
+            return ast_nodes.PostfixExpression(primaryExpression=self.visit(ctx.primaryExpression()),postfixSuffixes=[self.visit(ctx.postfixSuffix(i)) for i in range(len(ctx.postfixSuffix()))])
 
 
     # Visit a parse tree produced by Parser#conditionExpression.
@@ -578,7 +584,7 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#conditionBitAndExpression.
     def visitConditionBitAndExpression(self, ctx:Parser.ConditionBitAndExpressionContext):
         if len(ctx.conditionShiftExpression())>1:
-            return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.conditionShiftExpression(i)) for i in range(len(ctx.conditionShiftExpression()))])
+            return ast_nodes.PrimitiveExpression(op="@",expressions=[self.visit(ctx.conditionShiftExpression(i)) for i in range(len(ctx.conditionShiftExpression()))])
         else:
             return self.visit(ctx.conditionShiftExpression(0))
 
@@ -587,7 +593,7 @@ class ParserVisitor(ParseTreeVisitor):
     def visitConditionClosedBitAndExpression(self, ctx:Parser.ConditionClosedBitAndExpressionContext):
         if len(ctx.conditionShiftExpression())==0:
             return self.visit(ctx.conditionClosedShiftExpression())
-        return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.conditionShiftExpression(i)) for i in range(len(ctx.conditionShiftExpression()))]+[self.visit(ctx.conditionClosedShiftExpression())])
+        return ast_nodes.PrimitiveExpression(op="@",expressions=[self.visit(ctx.conditionShiftExpression(i)) for i in range(len(ctx.conditionShiftExpression()))]+[self.visit(ctx.conditionClosedShiftExpression())])
     
 
 
@@ -671,15 +677,22 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#conditionUnaryExpression.
     def visitConditionUnaryExpression(self, ctx:Parser.ConditionUnaryExpressionContext):
         if ctx.unaryOperator():
-                unaryExpression=self.visit(ctx.conditionUnaryExpression())
-                #quadratic time, may need to optimize!
+            unaryExpression=self.visit(ctx.conditionUnaryExpression())
+            if isinstance(unaryExpression,ast_nodes.UnaryExpression):
                 return ast_nodes.UnaryExpression(ops=[self.visit(ctx.unaryOperator())]+unaryExpression.ops,postfixExpression=unaryExpression.postfixExpression)
-        return ast_nodes.UnaryExpression(ops=[],postfixExpression=self.visit(ctx.conditionPostfixExpression()))
+            else:
+                return ast_nodes.UnaryExpression(ops=[self.visit(ctx.unaryOperator())],postfixExpression=unaryExpression)
+        else:
+            return self.visit(ctx.conditionPostfixExpression())
 
+        
     # Visit a parse tree produced by Parser#conditionPostfixExpression.
     def visitConditionPostfixExpression(self, ctx:Parser.ConditionPostfixExpressionContext):
-        return ast_nodes.PostfixExpression(primaryExpression=self.visit(ctx.conditionPrimary()),postfixSuffixes=[self.visit(ctx.postfixSuffix(i)) for i in range(len(ctx.postfixSuffix()))])
-
+        if len(ctx.postfixSuffix())==0:
+            return self.visit(ctx.conditionPrimary())
+        else:
+            return ast_nodes.PostfixExpression(primaryExpression=self.visit(ctx.conditionPrimary()),postfixSuffixes=[self.visit(ctx.postfixSuffix(i)) for i in range(len(ctx.postfixSuffix()))])
+        
     def visitConditionBreakExpression(self, ctx:Parser.ConditionBreakExpressionContext):#same as conditionBreakAssignmentExpression
         return self.visit(ctx.conditionBreakAssignmentExpression())
 
@@ -756,7 +769,7 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#conditionBreakBitAndExpression.
     def visitConditionBreakBitAndExpression(self, ctx:Parser.ConditionBreakBitAndExpressionContext):
         if len(ctx.conditionShiftExpression())>0:
-            return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.conditionBreakShiftExpression())]+[self.visit(ctx.conditionShiftExpression(i)) for i in range(len(ctx.conditionShiftExpression()))])
+            return ast_nodes.PrimitiveExpression(op="@",expressions=[self.visit(ctx.conditionBreakShiftExpression())]+[self.visit(ctx.conditionShiftExpression(i)) for i in range(len(ctx.conditionShiftExpression()))])
         else:
             return self.visit(ctx.conditionBreakShiftExpression())
 
@@ -766,7 +779,7 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.conditionBreakClosedShiftExpression():
             return self.visit(ctx.conditionBreakClosedShiftExpression())
         else:
-            return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.conditionBreakShiftExpression())]+ [self.visit(ctx.conditionShiftExpression(i)) for i in range(len(ctx.conditionShiftExpression()))]+[self.visit(ctx.conditionClosedShiftExpression())])
+            return ast_nodes.PrimitiveExpression(op="@",expressions=[self.visit(ctx.conditionBreakShiftExpression())]+ [self.visit(ctx.conditionShiftExpression(i)) for i in range(len(ctx.conditionShiftExpression()))]+[self.visit(ctx.conditionClosedShiftExpression())])
                     
 
     # Visit a parse tree produced by Parser#conditionBreakShiftExpression.
@@ -856,16 +869,22 @@ class ParserVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by Parser#conditionBreakUnaryExpression.
     def visitConditionBreakUnaryExpression(self, ctx:Parser.ConditionBreakUnaryExpressionContext):
         if ctx.unaryOperator():
-                unaryExpression=self.visit(ctx.conditionUnaryExpression())
-                #quadratic time, may need to optimize!
+            unaryExpression=self.visit(ctx.conditionUnaryExpression())
+            if isinstance(unaryExpression,ast_nodes.UnaryExpression):
                 return ast_nodes.UnaryExpression(ops=[self.visit(ctx.unaryOperator())]+unaryExpression.ops,postfixExpression=unaryExpression.postfixExpression)
+            else:
+                return ast_nodes.UnaryExpression(ops=[self.visit(ctx.unaryOperator())],postfixExpression=unaryExpression)
         else:
-            return ast_nodes.UnaryExpression(ops=[],postfixExpression=self.visit(ctx.conditionBreakPostfixExpression()))
+            return self.visit(ctx.conditionBreakPostfixExpression())
 
+        
     # Visit a parse tree produced by Parser#conditionBreakPostfixExpression.
     def visitConditionBreakPostfixExpression(self, ctx:Parser.ConditionBreakPostfixExpressionContext):
-        return ast_nodes.PostfixExpression(primaryExpression=self.visit(ctx.conditionPrimaryWithoutBareBlock()),postfixSuffixes=[self.visit(ctx.postfixSuffix(i)) for i in range(len(ctx.postfixSuffix()))])
-
+        if len(ctx.postfixSuffix())==0:
+            return self.visit(ctx.conditionPrimaryWithoutBareBlock())
+        else:
+            return ast_nodes.PostfixExpression(primaryExpression=self.visit(ctx.conditionPrimaryWithoutBareBlock()),postfixSuffixes=[self.visit(ctx.postfixSuffix(i)) for i in range(len(ctx.postfixSuffix()))])
+                
     # Visit a parse tree produced by Parser#statementExpression.
     def visitStatementExpression(self, ctx:Parser.StatementExpressionContext):#same as statementAssignmentExpression
         return self.visit(ctx.statementAssignmentExpression())
@@ -940,7 +959,7 @@ class ParserVisitor(ParseTreeVisitor):
     def visitStatementBitAndExpression(self, ctx:Parser.StatementBitAndExpressionContext):
         if len(ctx.shiftExpression())==0:
             return self.visit(ctx.statementShiftExpression())
-        return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.statementShiftExpression())]+[self.visit(ctx.shiftExpression(i)) for i in range(len(ctx.shiftExpression()))])
+        return ast_nodes.PrimitiveExpression(op="@",expressions=[self.visit(ctx.statementShiftExpression())]+[self.visit(ctx.shiftExpression(i)) for i in range(len(ctx.shiftExpression()))])
             
         
 
@@ -949,7 +968,7 @@ class ParserVisitor(ParseTreeVisitor):
     def visitStatementClosedBitAndExpression(self, ctx:Parser.StatementClosedBitAndExpressionContext):
         if ctx.statementClosedShiftExpression():
             return self.visit(ctx.statementClosedShiftExpression())
-        return ast_nodes.PrimitiveExpression(op="&",expressions=[self.visit(ctx.statementShiftExpression())]+[self.visit(ctx.shiftExpression(i)) for i in range(len(ctx.shiftExpression()))]+[self.visit(ctx.closedShiftExpression())])
+        return ast_nodes.PrimitiveExpression(op="@",expressions=[self.visit(ctx.statementShiftExpression())]+[self.visit(ctx.shiftExpression(i)) for i in range(len(ctx.shiftExpression()))]+[self.visit(ctx.closedShiftExpression())])
                  
         
 
@@ -1031,20 +1050,26 @@ class ParserVisitor(ParseTreeVisitor):
             return ast_nodes.CastExpression(unaryExpression=castExpression.unaryExpression,typeRefs=castExpression.typeRefs+[self.visit(ctx.closedCastType())])
         else:
             return ast_nodes.CastExpression(unaryExpression=castExpression,typeRefs=[self.visit(ctx.closedCastType())])   
-        
-           
+
+
     # Visit a parse tree produced by Parser#statementUnaryExpression.
     def visitStatementUnaryExpression(self, ctx:Parser.StatementUnaryExpressionContext):
         if ctx.unaryOperator():
-                unaryExpression=self.visit(ctx.unaryExpression())
-                #quadratic time, may need to optimize!
+            unaryExpression=self.visit(ctx.unaryExpression())
+            if isinstance(unaryExpression,ast_nodes.UnaryExpression):
                 return ast_nodes.UnaryExpression(ops=[self.visit(ctx.unaryOperator())]+unaryExpression.ops,postfixExpression=unaryExpression.postfixExpression)
-        return ast_nodes.UnaryExpression(ops=[],postfixExpression=self.visit(ctx.statementPostfixExpression()))
+            else:
+                return ast_nodes.UnaryExpression(ops=[self.visit(ctx.unaryOperator())],postfixExpression=unaryExpression)
+        else:
+            return self.visit(ctx.statementPostfixExpression())
 
     # Visit a parse tree produced by Parser#statementPostfixExpression.
     def visitStatementPostfixExpression(self, ctx:Parser.StatementPostfixExpressionContext):
-        return ast_nodes.PostfixExpression(primaryExpression=self.visit(ctx.nonBlockPrimary() if ctx.nonBlockPrimary() else ctx.expressionWithBlock()),postfixSuffixes=([self.visit(ctx.dotSuffix())] if ctx.dotSuffix() else [])+[self.visit(ctx.postfixSuffix(i)) for i in range(len(ctx.postfixSuffix()))])
-
+        if len(ctx.postfixSuffix())==0:
+            return self.visit(ctx.nonBlockPrimary())
+        else:
+            return ast_nodes.PostfixExpression(primaryExpression=self.visit(ctx.nonBlockPrimary()),postfixSuffixes=[self.visit(ctx.postfixSuffix(i)) for i in range(len(ctx.postfixSuffix()))])
+                
 
     # Visit a parse tree produced by Parser#primaryExpression.
     def visitPrimaryExpression(self, ctx:Parser.PrimaryExpressionContext):

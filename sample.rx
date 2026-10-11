@@ -24,16 +24,22 @@ fn q(mut s: &mut &mut S) {
     s.x = 2;
 }
 
+#[derive(PartialEq, Eq)]
+struct Node {
+    children: Vec<Node>,
+}
+
+fn fff(a: Node, b: Node) -> bool {
+    a == b
+}
+
 impl Point {
     const OFFSET: i32 = -OFFSET;
     fn new(){
         ;
     }
 }
-#[derive(PartialEq)]
-struct P{
-    x: Point
-}
+
 struct Point {
     x: i32,
 }
@@ -42,7 +48,29 @@ const offset2:i32=-Point::OFFSET;
 
 fn k(p: &mut i32) { *p = 2; }
 fn r()->i32{return 1;}
+
+fn t(a: [i32; 2]) -> i32 {
+    a[0]
+}
+
+fn u(mut x: i32) {
+    let a: &i32 = &x;        
+    let b: &mut i32 = &mut x; 
+}
+
+fn gg() -> i32 {
+    loop {
+        return 1;
+    }
+}
 fn main() {
+   
+    let mut k= Box::<i32>::new(1);
+    let mut x= Vec::<i32>::new();
+    x.push(1.clone());
+    let mut y=&Point{x:1};
+    let z=y.clone();
+    print_i32(x.len() as i32);
     let x:i32=loop{break 1;};
     loop {}
     let a: [i32;2]= [1; 2];

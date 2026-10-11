@@ -167,7 +167,7 @@ class PostfixExpression(Expression):
 @dataclass
 class UnaryExpression(Expression):
     ops: list[str]
-    postfixExpression: PostfixExpression
+    postfixExpression: Expression
 
 @dataclass
 class CastExpression(Expression):

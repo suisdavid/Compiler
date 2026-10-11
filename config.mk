@@ -3,15 +3,9 @@
 # Optional: build your compiler once before testing. Leave empty if prebuilt.
 # {runtime} will be linked into every program.
 # Write shared runtime assembly there if your IR/CODEGEN output references it.
-BUILD = CARGO_PROFILE_RELEASE_LTO=true cargo build --quiet --locked --release \
-    --manifest-path crates/rx/Cargo.toml \
-    --target-dir target/reference \
-    --target riscv32im-unknown-none-elf && : > {runtime}
+BUILD = $(PYTHON) -c "import antlr4; from semantic.checker import Checker"
 
-# Required for semantic tests: exit 0 to accept {source}, 1 to reject it.
-SEMANTIC = RX_SOURCE={source} $(REFERENCE_RUSTC) --cfg rx_semantic \
-    --emit=metadata crates/rx/src/entry.rs -o {output}
-
+SEMANTIC = $(PYTHON) main.py {source}
 # Required for IR tests: write RV32 LLVM IR to {output} (.ll).
 IR = RUST_MIN_STACK=16777216 RX_SOURCE={source} $(REFERENCE_RUSTC) --crate-type=staticlib \
     --emit=llvm-ir={output},link={output}.a -C opt-level=2 -C lto=fat \

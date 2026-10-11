@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass,field
 from semantic.errors import SemanticError
 from frontend.generated import ast_nodes
