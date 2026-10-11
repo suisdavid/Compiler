@@ -21,6 +21,7 @@ class Checker:
         self.StructLocations={}#identifier->(type:str,StructDefinition)
         self.FunctionLocations={}#identifier->(type:str,FunctionDefinition)
         self.vis={}#use in dfs
+
     def GetArrayInner(self,type:str):
         idx=len(type)-1
         while type[idx]!=';':
@@ -122,7 +123,7 @@ class Checker:
     def ParseConst(self,constvalue:ast_nodes.ConstValue,mustbe=None,impl=None):
         return self.ParseConstantItem(impl+"::" if impl else "",constvalue,mustbe)
     
-    def ParseTypeRef(self,typeref:ast_nodes.TypeRef,impl=None,typeonly=False,structName=None):#return Object
+    def ParseTypeRef(self,typeref:ast_nodes.TypeRef,impl=None,typeonly=False):#return Object
         if isinstance(typeref,ast_nodes.TypePath):
             if len(typeref.typePathSegments)!=1:
                 raise SemanticError("wrong type! RX doesn't support !=1 typePathSegments")
@@ -138,8 +139,8 @@ class Checker:
                 if segment.identifier in ["i32","u32","isize","usize","bool"]:
                     return self.ParseBasic(segment.identifier)
                 if segment.identifier=='Self':
-                    if structName or impl:
-                        segment.identifier=structName or impl
+                    if impl:
+                        segment.identifier=impl
                         return Struct(type=segment.identifier,outerAttributes=[],fields={})
                     else:
                         raise SemanticError("use Self outside struct definition!")
@@ -171,7 +172,7 @@ class Checker:
         for structField in struct.fields:
             if fields.get(structField.identifier):
                 raise SemanticError(f"{structField.identifier} already defined in struct {name}")
-            fields[structField.identifier]=self.ParseTypeRef(structField.typeref,impl=None,typeonly=False,structName=None)
+            fields[structField.identifier]=self.ParseTypeRef(structField.typeref,impl=name,typeonly=False)
         self.vis[name]=0
         result=Struct(type=name,outerAttributes=struct.outerAttributes,fields=fields)
         self.StructDefinitions[name]=result
@@ -209,8 +210,9 @@ class Checker:
         main=self.FunctionLocations["main"]
         if main.hasGeneric:
             raise SemanticError("main function cannot have genericArgs!")
-        if main.functionParameters or main.typeref:
-            raise SemanticError("main function has no arg or returnType")
+        if main.functionParameters:
+            raise SemanticError("main function has no arg!")
+
         for item in self.crate.Items:
             if isinstance(item,ast_nodes.InherentImpl):
                 typeref=item.typeRef
@@ -251,6 +253,9 @@ class Checker:
         self.vis={}
         for name in self.FunctionLocations:
             self.ParseFunction(name,self.FunctionLocations[name])
+        main=self.FunctionDefinitions["main"]
+        if main.returnType and main.returnType.type!="()":
+            raise self.SemanticError("main function doesn't have returnType!")
 
     def CheckAttribute(self,type:str, attribute:str,reset:bool=True):
         if reset:
@@ -269,7 +274,7 @@ class Checker:
                 if attribute in ["Copy","Clone"]:
                     return False
                 else:
-                    type=type[2:]
+                    type=type[5:]
             elif type.startswith("["):
                 type,_=self.GetArrayInner(type)
             elif type.startswith("Box<") or type.startswith("Vec<"):
@@ -304,6 +309,7 @@ class Checker:
                 type=type[4:-1]
             else:
                 raise SemanticError(f"{type} cannot clone!")
+    
     def dereference(self,type:Type)->Type:
         result=Type(mut=type.mut,mut_blocked=type.mut_blocked,left=type.left,type=type.type)
         while True:
@@ -321,8 +327,12 @@ class Checker:
             else:
                 return result
             
-    def CanTransform(self,right:str,left:str):#type already fixed 
-        if right==left or right=='^':#^ for never type
+    def CanTransform(self,right:str,left:str,right_mut_blocked:bool=False):#type already fixed 
+        if right == "^":
+            return True
+        if left.startswith("&mut ") and right_mut_blocked:
+            return False
+        if right==left:
             return True
         if left.startswith("&mut "):
             if right.startswith("&mut "):
@@ -355,6 +365,17 @@ class Checker:
             return True
         else:
             return False
+
+    def MergeType(self,type1:str,type2:str,mut_blocked1:bool=False,mut_blocked2:bool=False)->str:
+        if type1 and type2:
+            if self.CanTransform(type2,type1,mut_blocked2):
+                return type1
+            elif self.CanTransform(type1,type2,mut_blocked1):
+                return type2
+            else:
+                raise SemanticError(f"{type1} and {type2} cannot transform!")
+        return type1 or type2
+
     
     def CheckOp(self,type0:Type,type1:Type,op:str):#type already fixed
         if type0.type.startswith("#") or (type1 and type1.type.startswith("#")):
@@ -363,7 +384,7 @@ class Checker:
             if type0.left==False or type0.mut==False:
                 raise SemanticError(f"different types cannot op! {type0.type} {op} {type1.type}")
             if op=='=':
-                if not self.CanTransform(type1.type,type0.type):
+                if not self.CanTransform(type1.type,type0.type,type1.mut_blocked):
                     raise SemanticError(f"different types cannot transform! {type0.type}<-{type1.type}")
             elif op in ['+=','-=','*=','/=','%=']:
                 if type0.type not in self.integers or self.trydefer1(type1.type)!=type0.type:
@@ -384,7 +405,7 @@ class Checker:
                 while True:
                     if b.startswith("&mut "):
                         if a.startswith("&"):
-                            a=a[2:] if a.startwith("& ") else a[5:]
+                            a=a[2:] if a.startswith("& ") else a[5:]
                             b=b[5:]
                         else:
                             raise SemanticError(f"cannot compare! {type0.type} {op} {type1.type}")
@@ -418,32 +439,24 @@ class Checker:
             if op=='!':
                 if self.trydefer1(type0.type) not in self.basicTypes:
                     raise SemanticError(f"not integer or boolean types! {op} {type0.type}")
-                type0.mut=type0.left=type0.mut_blocked=False
+                return Type(mut=False,mut_blocked=False,left=False,type=self.trydefer1(type0.type))
             elif op=='minus':
                 if self.trydefer1(type0.type) not in ['i32','isize']:
                     raise SemanticError(f"cannot minus! {op} {type0.type}")
-                type0.mut=type0.left=type0.mut_blocked=False
+                return Type(mut=False,mut_blocked=False,left=False,type=self.trydefer1(type0.type))
             elif op=='star':
                 if not type0.type.startswith("&") and not type0.type.startswith("Box<"):
                     raise SemanticError(f"cannot dereference! {op} {type0.type}")
-                type0.left=True
                 if type0.type.startswith("& "):
-                    type0.mut=False
-                    type0.mut_blocked=True
-                    type0.type=type0.type[2:]
+                    return Type(mut=False,mut_blocked=True,left=True,type=type0.type[2:])
                 elif type0.type.startswith("&mut "):
-                    type0.mut=not type0.mut_blocked
-                    type0.type=type0.type[5:]
+                    return Type(mut=not type0.mut_blocked,mut_blocked=type0.mut_blocked,left=True,type=type0.type[5:])
                 else:#Box<T>
-                    type0.mut=(type0.mut or not type0.left) and not type0.mut_blocked
-                    type0.type=type0.type[4:-1]
+                    return Type(mut=(type0.mut or not type0.left) and not type0.mut_blocked,mut_blocked=type0.mut_blocked,left=True,type=type0.type[4:-1])
             else:#&,&mut
                 if 'mut' in op and (type0.left and not type0.mut):
                     raise SemanticError(f"left type not mut type! {op} {type0.type}")
-                type0.mut=False
-                type0.left=False
-                type0.type=('&mut ' if 'mut' in op else '& ')+type0.type
-            return type0
+                return Type(mut=False,mut_blocked=type0.mut_blocked,left=False,type=('&mut ' if 'mut' in op else '& ')+type0.type)
     def CheckVecBox(self,VecBox:str,func_name:str,scope:Scope,arguments:str,innerType:str,directCall=False,impl=None,inloop:LoopContext=None,type0:Type=None):#return Type
         if VecBox=="Vec":
             if func_name=='new':
@@ -552,7 +565,7 @@ class Checker:
                 else:
                     type=self.CheckOp(type,None,op)
             if expected:
-                if not self.CanTransform(type.type,expected):
+                if not self.CanTransform(type.type,expected,type.mut_blocked):
                     raise SemanticError(f"expression type error! {type.type} != {expected}")
                 type.type=expected
             return type
@@ -565,7 +578,7 @@ class Checker:
                     raise SemanticError(f"cannot cast! {type0.type} as {type1}")
                 type0.type=type1
             if expected:
-                if not self.CanTransform(type0.type,expected):
+                if not self.CanTransform(type0.type,expected,type0.mut_blocked):
                     raise SemanticError(f"expression type error! {type0.type} != {expected}")
                 type0.type=expected
             return Type(mut=False,mut_blocked=False,left=False,type=type0.type)
@@ -606,10 +619,13 @@ class Checker:
                     else:
                         raise SemanticError(f"not function! {type0.type}")
                 elif isinstance(suffix,ast_nodes.BracketSuffix):
-                    type=self.dereference(type0).type
-                    if type.startswith("Vec<") or type.startswith("["):
-                         self.ParseExpression(scope,suffix.expression,expected='usize',impl=impl,inloop=inloop)
-                         type0=Type(mut=type0.mut,mut_blocked=type0.mut_blocked if type.startswith("[") else (type0.mut_blocked or not type0.mut),left=True,type=self.GetArrayInner(type)[0] if type.startswith("[") else type[4:-1])
+                    type=self.dereference(type0)
+                    if not type.left:
+                        type.left = True
+                        type.mut = not type.mut_blocked
+                    if type.type.startswith("Vec<") or type.type.startswith("["):
+                        self.ParseExpression(scope,suffix.expression,expected='usize',impl=impl,inloop=inloop)
+                        type0=Type(mut=type.mut,mut_blocked=type.mut_blocked if type.type.startswith("[") else (type.mut_blocked or not type.mut),left=True,type=self.GetArrayInner(type.type)[0] if type.type.startswith("[") else type.type[4:-1])
                     else:
                         raise SemanticError(f"not array! {type0.type}")
                 elif isinstance(suffix,ast_nodes.DotSuffix):
@@ -621,6 +637,9 @@ class Checker:
                         type0=Type(mut=False,mut_blocked=False,left=False,type="usize")
                     else:
                         type0=self.dereference(type0)
+                        if not type0.left:
+                            type0.left = True
+                            type0.mut = not type0.mut_blocked
                         if not struct and not type.startswith("Vec<") and not type.startswith("Box<") :
                             raise SemanticError(f"struct {type} does not exist!")
                         if isinstance(suffix,ast_nodes.DotSuffixData):
@@ -650,7 +669,7 @@ class Checker:
                                     self.ParseExpression(scope,arguments.expressions[i],expected=func.params[i].type,impl=impl,inloop=inloop)
                                 type0=Type(mut=False,mut_blocked=False,left=False,type=func.returnType.type if func.returnType else "()")
             if expected:
-                if not self.CanTransform(type0.type,expected):
+                if not self.CanTransform(type0.type,expected,type0.mut_blocked):
                     raise SemanticError(f"expression type error! {type0.type} != {expected}")
                 type0.type=expected
             return type0
@@ -668,7 +687,7 @@ class Checker:
                     if (typePathSegments[0].identifier=="Vec" or typePathSegments[0].identifier=="Box") and len(typePathSegments[0].genericArgs)==1:
                         if expected:
                             raise SemanticError(f"function type doesn't match {expected}")  
-                        type=typePathSegments[0].identifier+"<"+self.ParseTypeRef(typePathSegments[0].genericArgs[0]).type+">"
+                        type=typePathSegments[0].identifier+"<"+self.ParseTypeRef(typePathSegments[0].genericArgs[0],impl=impl).type+">"
                         if len(typePathSegments)==2:#function
                             if len(typePathSegments[1].genericArgs)!=0:
                                 raise SemanticError(f"function {typePathSegments[1].identifier} has genericArgs!")  
@@ -686,7 +705,7 @@ class Checker:
                                 raise SemanticError(f"invalid use of Self!")
                             name=(impl if typePathSegments[0].identifier=="Self" else typePathSegments[0].identifier)+"::"+name
                         var=scope.get(name)#reference by name,may be function or variable
-                        if expected and not self.CanTransform(var.type,expected):
+                        if expected and not self.CanTransform(var.type,expected,var.mut_blocked):
                             raise SemanticError(f"expression type error! {var.type} != {expected}")
                         return Type(mut=var.mut,mut_blocked=var.mut_blocked,left=var.left,type=expected if expected else var.type)
                 else:#build Struct
@@ -694,7 +713,14 @@ class Checker:
                     args=expression.structExprFields
                     if len(typePathSegments)!=1 or len(typePathSegments[0].genericArgs)!=0:
                         raise SemanticError("invalid struct!")
+                    if typePathSegments[0].identifier=="Self":
+                        if impl:
+                            typePathSegments[0].identifier=impl
+                        else:
+                            raise SemanticError("use Self outside impl!")
                     struct=self.StructDefinitions.get(typePathSegments[0].identifier)
+                    if not struct:
+                        raise SemanticError(f"struct {typePathSegments[0].identifier} doesn't exist!")
                     identifiers=[arg.identifier for arg in args]
                     if len(identifiers)!=len(list(set(identifiers))):
                         raise SemanticError(f"repetitive args for struct {struct.type} construction!")
@@ -720,19 +746,19 @@ class Checker:
             elif expression.type=='array':
                 return self.ParseExpression(scope,expression.expression,expected=expected,impl=impl,inloop=inloop)
             elif expression.type=='break':
-                if inloop:
+                if inloop and inloop.loop:
                     if expression.expression:
                         if inloop.loop=="while":
                             raise SemanticError("break expr inside while!")
-                        new_type=self.ParseExpression(scope,expression.expression,expected=inloop.retType,impl=impl,inloop=inloop).type
-                        if not inloop.retType:
-                            inloop.retType=new_type
+                        new_type=self.ParseExpression(scope,expression.expression,expected=inloop.expectedType,impl=impl,inloop=inloop).type
+                        if not inloop.expectedType:
+                            inloop.retType=self.MergeType(inloop.retType,new_type)
                     else:#return ()
-                        if inloop.retType and not self.CanTransform("()",inloop.retType):
-                            raise SemanticError(f"loop return type error! () != {inloop.retType}")
-                        elif not inloop.retType:
-                            inloop.retType="()"
-                    inloop.has_break=True
+                        if not inloop.expectedType:
+                            inloop.retType=self.MergeType(inloop.retType,"()")
+                        elif not self.CanTransform("()",inloop.expectedType):
+                            raise SemanticError(f"expression type error! () != {inloop.expectedType}")
+                    inloop.has_break=inloop.has_never=True
                     return Type(mut=False,mut_blocked=False,left=False,type="^")
                 else:
                     raise SemanticError("break outside loop!")
@@ -744,28 +770,35 @@ class Checker:
                 else:#return ()
                     if type and not self.CanTransform("()",type):
                         raise SemanticError(f"function return type error! () != {type}")
+                inloop.has_never=True
                 return Type(mut=False,mut_blocked=False,left=False,type="^")
             elif expression.type=='continue':
-                if not inloop:
+                if not inloop or not inloop.loop:
                     raise SemanticError("continue outside loop!")
+                inloop.has_never=True
                 return Type(mut=False,mut_blocked=False,left=False,type="^")
 
         elif isinstance(expression,ast_nodes.NormalExpressionWithBlock):
             if expression.loop:
                 if expression.conditionExpression:#while
-                    self.ParseExpression(scope,expression.conditionExpression,expected="bool",impl=impl,inloop=inloop)
-                    loopContext=LoopContext(loop="while",has_break=False,retType=expected)
+                    conditionContext=LoopContext(loop="",has_break=False,expectedType=expected,has_never=False,retType="")
+                    loopContext=LoopContext(loop="while",has_break=False,expectedType=expected,has_never=False,retType="")
+                    self.ParseExpression(scope,expression.conditionExpression,expected="bool",impl=impl,inloop=conditionContext)
+                    if conditionContext.has_never:
+                        inloop.has_never=True
                     self.ParseExpression(scope,expression.blockExpression,expected="()",impl=impl,inloop=loopContext)
                     if expected and not self.CanTransform("()",expected):
                         raise SemanticError(f"expression type error! () != {expected}")
                     return Type(mut=False,mut_blocked=False,left=False,type=expected if expected else "()")
                 else:#loop
-                    loopContext=LoopContext(loop="loop",has_break=False,retType=expected)
+                    loopContext=LoopContext(loop="loop",has_break=False,expectedType=expected,has_never=True,retType="")
                     self.ParseExpression(scope,expression.blockExpression,expected="()",impl=impl,inloop=loopContext)
                     if not loopContext.has_break:
+                        inloop.has_never=True
                         return Type(mut=False,mut_blocked=False,left=False,type="^")
                     else:
                         if loopContext.retType=="^":
+                            inloop.has_never=True
                             return Type(mut=False,mut_blocked=False,left=False,type="^")
                         else:
                             return Type(mut=False,mut_blocked=False,left=False,type=expected if expected else loopContext.retType)
@@ -775,21 +808,26 @@ class Checker:
         elif isinstance(expression,ast_nodes.IfExpression):
             conditionType=self.ParseExpression(scope,expression.conditionExpression,expected="bool",impl=impl,inloop=inloop)
             if len(expression.thenExpressions)==2:
-                type0=self.ParseExpression(scope,expression.thenExpressions[0],expected=expected,impl=impl,inloop=inloop)
-                type1=self.ParseExpression(scope,expression.thenExpressions[1],expected=expected,impl=impl,inloop=inloop)
+                ctx1=LoopContext(loop=inloop.loop,has_break=inloop.has_break,has_never=False,expectedType=inloop.expectedType,retType=inloop.retType)
+                ctx2=LoopContext(loop=inloop.loop,has_break=inloop.has_break,has_never=False,expectedType=inloop.expectedType,retType=inloop.retType)
+                type0=self.ParseExpression(scope,expression.thenExpressions[0],expected=expected,impl=impl,inloop=ctx1)
+                type1=self.ParseExpression(scope,expression.thenExpressions[1],expected=expected,impl=impl,inloop=ctx2)
+                inloop.has_break |= ctx1.has_break or ctx2.has_break
+                if not inloop.expectedType:
+                    inloop.retType=self.MergeType(inloop.retType,self.MergeType(ctx1.retType,ctx2.retType))
                 if conditionType.type=="^" or (type0.type=="^" and type1.type=="^"):
+                    inloop.has_never=True
                     return Type(mut=False,mut_blocked=False,left=False,type="^")
                 elif expected:
                     return Type(mut=False,mut_blocked=False,left=False,type=expected)
                 else:
-                    if self.CanTransform(type1.type,type0.type):
-                        return Type(mut=False,mut_blocked=False,left=False,type=type0.type)
-                    elif self.CanTransform(type0.type,type1.type):
-                        return Type(mut=False,mut_blocked=False,left=False,type=type1.type)
-                    else:
-                        raise SemanticError(f"type {type0.type} and type {type1.type} cannot transform!")
+                    return Type(mut=False,mut_blocked=False,left=False,type=self.MergeType(type0.type,type1.type,type0.mut_blocked,type1.mut_blocked))
             else:
-                self.ParseExpression(scope,expression.thenExpressions[0],expected="()",impl=impl,inloop=inloop)
+                ctx=LoopContext(loop=inloop.loop,has_break=inloop.has_break,has_never=False,expectedType=inloop.expectedType,retType=inloop.retType)
+                self.ParseExpression(scope,expression.thenExpressions[0],expected="()",impl=impl,inloop=ctx)
+                inloop.has_break |= ctx.has_break
+                if not inloop.expectedType:
+                    inloop.retType=self.MergeType(inloop.retType,ctx.retType)
                 if conditionType.type=="^":
                     return Type(mut=False,mut_blocked=False,left=False,type="^")
                 elif expected and not self.CanTransform("()",expected):
@@ -800,16 +838,15 @@ class Checker:
 
         elif isinstance(expression,ast_nodes.BlockExpression):
             newscope=Scope(values={},parent=scope)
-            has_never=False
             for statement in expression.statements:
-                has_never|=self.ParseStatement(newscope,statement,impl=impl,inloop=inloop)
-            ret=self.ParseExpression(newscope,expression.statementexpression,expected=expected,impl=impl,inloop=inloop).type if expression.statementexpression else "()"
-            if has_never:
+               self.ParseStatement(newscope,statement,impl=impl,inloop=inloop)
+            ret=self.ParseExpression(newscope,expression.statementexpression,expected=expected,impl=impl,inloop=inloop) if expression.statementexpression else Type(mut=False,mut_blocked=False,left=False,type="()")
+            if inloop.has_never:
                 return Type(mut=False,mut_blocked=False,left=False,type="^")
-            elif expected and not self.CanTransform(ret,expected):
-                raise SemanticError(f"expression type error!{ret} != {expected}")
+            elif expected and not self.CanTransform(ret.type,expected,ret.mut_blocked):
+                raise SemanticError(f"expression type error!{ret.type} != {expected}")
             else:
-                return Type(mut=False,mut_blocked=False,left=False,type=expected if expected else ret)
+                return Type(mut=False,mut_blocked=False,left=False,type=expected if expected else ret.type)
             
         elif isinstance(expression,ast_nodes.NormalArrayExpresssion):
             if expected:
@@ -825,14 +862,14 @@ class Checker:
                 if len(expression.expressions)==0:
                     return Type(mut=False,mut_blocked=False,left=False,type="[;0]")
                 else:
-                    type0=self.ParseExpression(scope,expression.expressions[0],impl=impl,inloop=inloop).type
+                    type0=self.ParseExpression(scope,expression.expressions[0],impl=impl,inloop=inloop)
                     for i in range(1,len(expression.expressions)):
-                        type1=self.ParseExpression(scope,expression.expressions[i],impl=impl,inloop=inloop).type
-                        if self.CanTransform(type0,type1):
+                        type1=self.ParseExpression(scope,expression.expressions[i],impl=impl,inloop=inloop)
+                        if self.CanTransform(type0.type,type1.type,type0.mut_blocked):
                             type0=type1
-                        elif not self.CanTransform(type1,type0):
-                            raise SemanticError(f"types in array are not identical! {type0}!={type1}")
-                    return Type(mut=False,mut_blocked=False,left=False,type=f"[{type0};{len(expression.expressions)}]")
+                        elif not self.CanTransform(type1.type,type0.type,type1.mut_blocked):
+                            raise SemanticError(f"types in array are not identical! {type0.type}!={type1.type}")
+                    return Type(mut=False,mut_blocked=False,left=False,type=f"[{type0.type};{len(expression.expressions)}]")
 
         elif isinstance(expression,ast_nodes.RepeatArrayExpression):
             length=self.ParseConst(expression.length,mustbe='usize',impl=impl).value
@@ -842,10 +879,14 @@ class Checker:
                 innerType,num=self.GetArrayInner(expected)
                 if num!=length:
                     raise SemanticError(f"Array length doesn't align! {num}!={length}!")
-                self.ParseExpression(scope,expression.expression,expected=innerType,impl=impl,inloop=inloop)
+                type0=self.ParseExpression(scope,expression.expression,expected=innerType,impl=impl,inloop=inloop).type
+                if length>1 and not self.CheckAttribute(type0,"Copy"):
+                    raise SemanticError("repeating more than once requires copy!")
                 return Type(mut=False,mut_blocked=False,left=False,type=expected)
             else:
                 type0=self.ParseExpression(scope,expression.expression,impl=impl,inloop=inloop).type
+                if length>1 and not self.CheckAttribute(type0,"Copy"):
+                    raise SemanticError("repeating more than once requires copy!")
                 return Type(mut=False,mut_blocked=False,left=False,type=f"[{type0};{length}]")
 
         elif isinstance(expression,ast_nodes.LiteralExpression):
@@ -861,17 +902,16 @@ class Checker:
                 
     def ParseStatement(self,scope:Scope,statement:ast_nodes.Statement,impl=None,inloop:LoopContext=None):#return has_never
         if isinstance(statement,ast_nodes.LetStatement):
-            type=self.ParseTypeRef(statement.typeRef).type if statement.typeRef else None
+            type=self.ParseTypeRef(statement.typeRef,impl=impl).type if statement.typeRef else None
             variable=Variable(mut=statement.mut,mut_blocked=False,name=statement.identifier,type=type,left=True)
             newtype=self.ParseExpression(scope,statement.value,expected=type,impl=impl,inloop=inloop).type
             variable=Variable(mut=statement.mut,mut_blocked=False,name=statement.identifier,type=type if type else newtype,left=True)
             scope.register(statement.identifier,variable)
-            return newtype=="^"
         else:
             if statement.expression:
-                return self.ParseExpression(scope,statement.expression,impl=impl,inloop=inloop).type=="^"
-            else:
-                return False
+                type=self.ParseExpression(scope,statement.expression,impl=impl,inloop=inloop)
+                if not statement.semi and not self.CanTransform(type.type,'()',type.mut_blocked):
+                    raise SemanticError(f"expression type error! {type.type} != ()")
 
     def SemanticCheck(self):
         self.scope=Scope(values={})#global scope
@@ -884,6 +924,10 @@ class Checker:
             self.scope.register(name,Variable(mut=False,mut_blocked=False,left=False,type=f'#{name}',name=name))
         for name in self.ConstValues:
             self.scope.register(name,Variable(mut=False,mut_blocked=False,left=True,type=self.ConstValues[name].type,name=name))
+        for name in self.StructDefinitions:
+            if self.CheckAttribute(name,"Clone") and not self.FunctionDefinitions.get(name+"::clone"):
+                self.scope.register(name+"::clone",Variable(mut=False,mut_blocked=False,left=False,type=f'#{name}::clone',name=f'{name}::clone'))
+
         for name in self.FunctionDefinitions:
             if name in ['print_i32','println_i32','get_i32']:
                 continue
@@ -894,9 +938,9 @@ class Checker:
                 if not functionInfo.self.amp:
                     function_scope.values["self"]=Variable(mut=functionInfo.self.mut,mut_blocked=False,name=name+"@self",type=impl,left=True)
                 else:
-                    function_scope.values["self"]=Variable(mut=functionInfo.self.mut,mut_blocked=not functionInfo.self.mut,name=name+"@self",type=('&mut' if functionInfo.self.mut else '& ')+impl,left=True)
+                    function_scope.values["self"]=Variable(mut=functionInfo.self.mut,mut_blocked=not functionInfo.self.mut,name=name+"@self",type=('&mut ' if functionInfo.self.mut else '& ')+impl,left=True)
             self.functionName=name
-            self.ParseExpression(function_scope,functionInfo.body,expected=functionInfo.returnType.type if functionInfo.returnType else "()",impl=impl)
+            self.ParseExpression(function_scope,functionInfo.body,expected=functionInfo.returnType.type if functionInfo.returnType else "()",impl=impl,inloop=LoopContext(loop="",has_break=False,has_never=False,expectedType="",retType=""))
         
 
 

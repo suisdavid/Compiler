@@ -69,6 +69,8 @@ class FunctionInfo:
 class LoopContext:
     loop:str #loop,while
     has_break: bool
+    has_never: bool 
+    expectedType:str
     retType:str
 
 @dataclass

@@ -38,9 +38,10 @@ if __name__=="__main__":
         sys.exit(0)
     try:
         crate=ast_build(sys.argv[1])
+      #  pprint(crate)
     except Exception as e:
         print("Parse Error!")
-        sys.exit(1)
+        sys.exit(2)
     checker=Checker(crate)
     try:
         checker.SemanticCheck()
