@@ -7,10 +7,7 @@ BUILD = $(PYTHON) -c "import antlr4; from semantic.checker import Checker"
 
 SEMANTIC = $(PYTHON) main.py {source}
 # Required for IR tests: write RV32 LLVM IR to {output} (.ll).
-IR = RUST_MIN_STACK=16777216 RX_SOURCE={source} $(REFERENCE_RUSTC) --crate-type=staticlib \
-    --emit=llvm-ir={output},link={output}.a -C opt-level=2 -C lto=fat \
-    crates/rx/src/entry.rs
-
+IR = $(PYTHON) main.py {source}
 # Required for codegen/optimization tests: write RV32IM assembly to {output} (.s).
 CODEGEN = RUST_MIN_STACK=16777216 RX_SOURCE={source} $(REFERENCE_RUSTC) --crate-type=staticlib \
     --emit=asm={output},link={output}.a -C opt-level=2 -C lto=fat \

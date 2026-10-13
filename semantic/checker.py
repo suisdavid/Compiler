@@ -900,7 +900,7 @@ class Checker:
 
 
                 
-    def ParseStatement(self,scope:Scope,statement:ast_nodes.Statement,impl=None,inloop:LoopContext=None):#return has_never
+    def ParseStatement(self,scope:Scope,statement:ast_nodes.Statement,impl=None,inloop:LoopContext=None):
         if isinstance(statement,ast_nodes.LetStatement):
             type=self.ParseTypeRef(statement.typeRef,impl=impl).type if statement.typeRef else None
             variable=Variable(mut=statement.mut,mut_blocked=False,name=statement.identifier,type=type,left=True)

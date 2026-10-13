@@ -1,6 +1,0 @@
-fn f() -> i32 {
-    let x: i32 = loop {};
-}
-fn main() {
-
-}
