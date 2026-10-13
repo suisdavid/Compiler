@@ -21,7 +21,7 @@ class Checker:
         self.StructLocations={}#identifier->(type:str,StructDefinition)
         self.FunctionLocations={}#identifier->(type:str,FunctionDefinition)
         self.vis={}#use in dfs
-
+        self.StructOrder=[]
     def GetArrayInner(self,type:str):
         idx=len(type)-1
         while type[idx]!=';':
@@ -176,6 +176,7 @@ class Checker:
         self.vis[name]=0
         result=Struct(type=name,outerAttributes=struct.outerAttributes,fields=fields)
         self.StructDefinitions[name]=result
+        self.StructOrder.append(name)
         return result
 
     def ParseFunction(self,name:str,function:ast_nodes.FunctionDefinition):#return functionInfo
@@ -620,7 +621,7 @@ class Checker:
                         raise SemanticError(f"not function! {type0.type}")
                 elif isinstance(suffix,ast_nodes.BracketSuffix):
                     type=self.dereference(type0)
-                    if not type.left:
+                    if not type.left:#materialize right value
                         type.left = True
                         type.mut = not type.mut_blocked
                     if type.type.startswith("Vec<") or type.type.startswith("["):

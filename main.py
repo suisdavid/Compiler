@@ -7,6 +7,7 @@ from semantic.checker import Checker
 from semantic.errors import SemanticError
 from pprint import pprint
 from antlr4.error.ErrorListener import ErrorListener
+from ir.builder import Builder
 
 class Listener(ErrorListener):
    def syntaxError(self):
@@ -47,5 +48,7 @@ if __name__=="__main__":
     except SemanticError as e:
         print(e.errormessage)
         sys.exit(1)
-    pprint(checker.ConstValues)
-    #pprint(checker.FunctionDefinitions)
+    builder=Builder(crate,checker,sys.argv+".ll")
+    builder.Build()
+
+    
