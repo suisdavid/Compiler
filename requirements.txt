@@ -1,1 +1,2 @@
-antlr4-python3-runtime==4.13.2
+antlr4-python3-runtime==4.13.2 \
+    --hash=sha256:fe3835eb8d33daece0e799090eda89719dbccee7aa39ef94eed3818cafa5a7e8
