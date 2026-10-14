@@ -5,8 +5,9 @@ from semantic.scope import *
 
 @dataclass
 class IRType:
-    type:str#concrete type defined in SemanticCheck
+    type:str#concrete type defined in SemanticCheck, except that&mut all become &
     identifier:str#begin with % 
+    left:str=None#if this is a left value, left represents its addr
 
 @dataclass
 class IRStruct:#basic struct names or vec
@@ -41,7 +42,7 @@ class IRFunction:
     retType:str
     param_names:list[str]
     param_types:list[str]
-    blocks:list[IRBlock]
+    block:str
 
 
 @dataclass

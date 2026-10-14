@@ -48,7 +48,7 @@ if __name__=="__main__":
     except SemanticError as e:
         print(e.errormessage)
         sys.exit(1)
-    builder=Builder(crate,checker,sys.argv+".ll")
+    builder=Builder(checker,sys.argv+".ll")
     builder.Build()
 
     

@@ -702,9 +702,12 @@ class Checker:
                                 raise SemanticError(f"genericArgs!")
                         name=typePathSegments[-1].identifier
                         if len(typePathSegments)==2:#impl
-                            if typePathSegments[0].identifier=="Self" and not impl:
-                                raise SemanticError(f"invalid use of Self!")
-                            name=(impl if typePathSegments[0].identifier=="Self" else typePathSegments[0].identifier)+"::"+name
+                            if typePathSegments[0].identifier=="Self":
+                                if impl:
+                                    typePathSegments[0].identifier==impl
+                                else:
+                                    raise SemanticError(f"invalid use of Self!")
+                            name=typePathSegments[0].identifier+"::"+name
                         var=scope.get(name)#reference by name,may be function or variable
                         if expected and not self.CanTransform(var.type,expected,var.mut_blocked):
                             raise SemanticError(f"expression type error! {var.type} != {expected}")
