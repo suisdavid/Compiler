@@ -5,7 +5,7 @@ from semantic.scope import *
 
 @dataclass
 class IRType:
-    type:str#concrete type defined in SemanticCheck, except that&mut all become &
+    type:str#concrete type defined in SemanticCheck, except that &mut all become &
     identifier:str#begin with % 
     left:str=None#if this is a left value, left represents its addr
 
@@ -18,7 +18,7 @@ class IRStruct:#basic struct names or vec
 @dataclass
 class IRVec(IRStruct):
     T: str
-    #field: length(i32), cap(i32), T_length(i32),base(ptr)
+    #field: length(i32), cap(i32),base(ptr)
     def push(self,x:IRType):
         pass
 
