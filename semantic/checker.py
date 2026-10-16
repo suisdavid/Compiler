@@ -633,8 +633,11 @@ class Checker:
                     type=self.dereference(type0).type
                     struct=self.StructDefinitions.get(type)
                     if (not struct or not self.FunctionDefinitions.get(type+"::clone")) and isinstance(suffix,ast_nodes.DotSuffixMethod) and suffix.pathExprSegment.identifier=="clone" and not suffix.pathExprSegment.genericArgs and len(suffix.callarguments.expressions)==0:#special check for built-in clone!
-                        type0=Type(mut=False,mut_blocked=False,left=False,type=self.GetClone(type0.type))
+                        clone_type=self.GetClone(type0.type)
+                        suffix.pathExprSegment.identifier="clone@"+clone_type 
+                        type0=Type(mut=False,mut_blocked=False,left=False,type=clone_type)
                     elif self.dereference(type0).type.startswith("[") and isinstance(suffix,ast_nodes.DotSuffixMethod) and suffix.pathExprSegment.identifier=="len" and not suffix.pathExprSegment.genericArgs and  len(suffix.callarguments.expressions)==0:#len
+                        suffix.pathExprSegment.identifier="len@"
                         type0=Type(mut=False,mut_blocked=False,left=False,type="usize")
                     else:
                         type0=self.dereference(type0)
@@ -689,9 +692,11 @@ class Checker:
                         if expected:
                             raise SemanticError(f"function type doesn't match {expected}")  
                         type=typePathSegments[0].identifier+"<"+self.ParseTypeRef(typePathSegments[0].genericArgs[0],impl=impl).type+">"
+                        
                         if len(typePathSegments)==2:#function
                             if len(typePathSegments[1].genericArgs)!=0:
                                 raise SemanticError(f"function {typePathSegments[1].identifier} has genericArgs!")  
+                            typePathSegments[0].identifier=f"#{type}::{typePathSegments[1].identifier}"#for IR
                             return Type(mut=False,mut_blocked=False,left=False,type=f"#{type}::{typePathSegments[1].identifier}")
                         else:
                             raise SemanticError(f"invalid reference of {typePathSegments[0].identifier}!")
@@ -711,6 +716,7 @@ class Checker:
                         var=scope.get(name)#reference by name,may be function or variable
                         if expected and not self.CanTransform(var.type,expected,var.mut_blocked):
                             raise SemanticError(f"expression type error! {var.type} != {expected}")
+                        typePathSegments[0].identifier=name
                         return Type(mut=var.mut,mut_blocked=var.mut_blocked,left=var.left,type=expected if expected else var.type)
                 else:#build Struct
                     typePathSegments=expression.expression.typePathSegments

@@ -36,14 +36,6 @@ class IRBlock:
     identifier:str #block name
     statements:str #statements in block
 
-@dataclass
-class IRFunction:
-    identifier:str #function name
-    retType:str
-    param_names:list[str]
-    param_types:list[str]
-    block:str
-
 
 @dataclass
 class IRScope:
@@ -56,12 +48,21 @@ class IRScope:
         return scope
         
     def register(self,name:str,type:IRType): 
-        self.values[name]=type
+        self.vars[name]=type
     
-        def get(self,name: str):
-            scope=self.registered(name)
-            if scope==None:
-                raise SemanticError(f"name not registered! {name}")
-            return scope.values[name]
+    def get(self,name: str):
+        scope=self.registered(name)
+        return scope.vars[name]
     
+@dataclass
+class IRFunction:
+    identifier:str #function name
+    retType:str
+    param_names:list[str]
+    param_types:list[str]
+    block:str
+    scope: IRScope
+    body: ast_nodes.BlockExpression
+
+
 

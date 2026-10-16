@@ -27,7 +27,7 @@ class Builder:
         self.blockctr=0
         self.block=""
 
-    def CountPtr(self,type:str)->int:
+    def CountPtr(self,type:str)->int,str:
         cnt=0
         while True:
             if type.startswith("& "):
@@ -55,19 +55,15 @@ class Builder:
         self.blockctr+=1
         return f"block{self.varctr}"
     
-    def GetIRType(self,type:str)->str:
-        if type.startswith("&") or type.startswith("Box<") or type.startswith("["):
-            return "ptr"
-        elif type.startswith("Vec<"):
-            return "%Vec"
-        elif type=="()":
-            return "%Unit"
-        elif type in ["i32","u32","isize","usize"]:
-            return "i32"
-        elif type=="bool":
-            return "i1"
-        else:
-            return "%"+type
+    def GetIRType(type:str)->str:#replace all &mut with &
+        return type.replace('&mut','&')
+
+    def GetArrayInfo(self,type:str)->tuple[str,int]:#array innerType and length
+        idx=len(type)-1
+        while type[idx]!=';':
+            idx-=1
+        return type[1:idx],int(type[idx+1:-1])
+
     
     def GetAllocType(self,type:str)->str:
             if type.startswith("&") or type.startswith("Box<"):
@@ -81,8 +77,7 @@ class Builder:
             elif type=="bool":
                 return "i1"
             elif type.startswith("["):
-                innerType=type[1:type.index(";")]
-                length=int(type[type.index(";")+1:-1])
+                innerType,length=self.GetArrayInfo(type)
                 return f"[{length} x {self.GetAllocType(innerType)}]"
             else:
                 return "%"+type
@@ -94,10 +89,37 @@ class Builder:
         for _ in range(cnt):
             temp=self.GenTempName()
             lasttype=lasttype[2:] if lasttype.startswith("& ") else lasttype[4:-1]#Box
-            s+=f"   {temp} = load {self.GetIRType(lasttype)}, ptr {last}\n"
+            s+=f"   {temp} = load {self.GetAllocType(lasttype)}, ptr {last}\n"
             last=temp
         return s,last
+    def dereference(self,type:str)->str:
+        while True:
+            if type.startswith("& "):
+                type=type[2:]
+            elif type.startswith("Box<"):
+                type=type[4:-1]
+            else:
+                break
+        return type
     
+    def AutoDereference(self,type:IRType,wanted:str=None):#auto derefence type's type to wanted and change's type's identifier, also append s to self.block
+        if wanted=='& '+type.type:#special case in self
+            type.identifier=type.left
+            type.left=None
+            type.type=wanted
+            return
+        while type.type!=wanted:
+            temp=self.GenTempName()
+            if type.type.startswith("& "):
+                type.type=type.type[2:]
+            elif    type.type.startswith("Box<"):
+                type.type=type.type[4:-1]
+            else:
+                return
+            self.block+=f"   {temp} = load {self.GetAllocType(type.type)}, ptr {type.identifier}\n"
+            type.left=type.identifier
+            type.identifier=temp
+
     def BuildAndStore(self,var1:str,var2:str,type:str)->str:#store var2's value into var1
         return f"   {var1} = alloca {type}\n   store {type} {var2}, ptr {var1}\n"#statement format: Tab{statement}\n
     
@@ -130,12 +152,13 @@ class Builder:
             else:#=
                 s,temp=self.Dereference(type2,cnt=self.CountPtr(type2.type)[0]-self.CountPtr(type1.type)[0])
                 news,block_name=self.Clone(IRType(type=type1.type,identifier=temp),type1.left,block_name)
-            return s+news,IRType(type="()",identifier=None),block_name
+            res=self.GenTempName()
+            return s+news+f"    {res} = freeze %Unit zeroinitializer\n",IRType(type="()",identifier=res),block_name
         
         elif op in self.comparisonOps:
             temp=self.GenTempName()
             if op in ['==','!=']:
-                s=f"   {temp} = icmp {("eq" if op=='==' else "ne")} {self.GetIRType(type1.type)} {type1.identifier},{type2.identifier}\n"
+                s=f"   {temp} = icmp {("eq" if op=='==' else "ne")} {self.GetAllocType(type1.type)} {type1.identifier},{type2.identifier}\n"
             
             elif op in [">","<","<=",">="]:
                 cnt1,type=self.CountPtr(type1.type)
@@ -191,26 +214,25 @@ class Builder:
                 return s,IRType(type=type1.type[2:],identifier=temp),block_name
             else:#&
                 temp=self.GenTempName()
-                return self.BuildAndStore(temp,type1.identifier,self.GetIRType(type1.type)),IRType(type="& "+type1.type,identifier=temp),block_name
+                return self.BuildAndStore(temp,type1.identifier,self.GetAllocType(type1.type)),IRType(type="& "+type1.type,identifier=temp),block_name
 
     def Clone(self,type:IRType,res:str,block_name:str):#clone struct to res(ptr,already alloced),return s,block_name
         s=""
         if type.type=="()":#nothing should happen
             return s,block_name
         elif type.type in self.basicTypes or type.type.startswith("& "):
-            return f"store {self.GetIRType(type)} {type.identifier}, ptr {res}\n",block_name
+            return f"store {self.GetAllocType(type)} {type.identifier}, ptr {res}\n",block_name
         elif type.type.startswith("Box<"):
             dest=self.GenTempName()
             src=self.GenTempName()
             alloc_type=self.GetAllocType(innerType)
             innerType=type.type[4:-1]
-            s=f'''{src} = load {self.GetIRType(innerType)}, ptr {type.identifier}\n
+            s=f'''{src} = load {self.GetAllocType(innerType)}, ptr {type.identifier}\n
                 {dest} = alloca {alloc_type}\n'''
             news,block_name=self.Clone(IRType(type=innerType,identifier=src),dest,block_name)
             return s+news+f"    store ptr {dest}, ptr {res}\n",block_name
         elif type.type.startswith("["):
-            length=int(type.type[type.type.index(";")+1:-1])
-            innerType=type[1:type.type.index(";")]
+            innerType,length=self.GetArrayInfo(type.type)
             alloc_type=self.GetAllocType(innerType)
             loop_block=self.GenBlockName()
             ctr=self.GenTempName()
@@ -240,29 +262,16 @@ class Builder:
             return s,new_block_name 
         elif type.type.startswith("Vec<"):
             innerType=type.type[4:-1]
-            struct=self.StructDefinitions['Vec']
-            new_res_=self.GenTempName()
-            s=f"{new_res_} = load %Vec, ptr {res}\n"
-            for i in range(2):
-                temp=self.GenTempName()
-                src=self.GenTempName()
-                dest=self.GenTempName()
-                s+=f'''{temp} = getelementptr %{struct}, ptr {type.identifier}, i32 0, i32 {i}
-                    {src} = load {self.GetIRType(struct.field_types[i])}, ptr {temp}
-                    {dest} = getelementptr %{struct}, ptr {new_res_}, i32 0, i32 {i}\n'''
-                news,block_name=self.Clone(IRType(type=struct.field_types[i],identifier=src),dest,block_name)
-                s+=news
             temp=self.GenTempName()
             temp1=self.GenTempName()
             temp2=self.GenTempName()
-            temp3=self.GenTempName()
-            temp4=self.GenTempName()
-            temp5=self.GenTempName()
 
             length=self.GenTempName()
+            length_ptr=self.GenTempName()
             src=self.GenTempName()
             dest=self.GenTempName()
             cap=self.GenTempName()
+            cap_ptr=self.GenTempName()
             pointer=self.GenTempName()
             new_res=self.GenTempName()
             source=self.GenTempName()
@@ -272,16 +281,17 @@ class Builder:
             ctr=self.GenTempName()
             alloc_type=self.GetAllocType(innerType)
             s+=f'''
-                {new_res_} = load %Vec, ptr {res}
-                {temp} = getelementptr %Vec, ptr {type.identifier}, i32 0, i32 0
-                {length} = load i32, ptr {temp}
-                {temp3} = getelementptr %Vec, ptr {type.identifier}, i32 0, i32 2
+                {length} = extractvalue %Vec {type.identifier}, 0
+                {cap} = extractvalue %Vec {type.identifier}, 1
+                {pointer} = extractvalue %Vec {type.identifier}, 2
+                {length_ptr} = getelementptr %Vec, ptr {res}, i32 0, i32 0
+                {cap_ptr} = getelementptr %Vec, ptr {res}, i32 0, i32 1
+                store i32 {length}, ptr {length_ptr}
+                store i32 {cap}, ptr {cap_ptr}
                 {pointer} = load ptr, ptr {temp3}
-                {temp4} = getelementptr %Vec, ptr {new_res_}, i32 0, i32 1
-                {cap} = load i32, ptr {temp4}
-                {temp5} = getelementptr %Vec, ptr {new_res_}, i32 0, i32 2
+                {temp} = getelementptr %Vec, ptr {res}, i32 0, i32 2
                 {new_res} = alloca {alloc_type}, i32 {cap}
-                store ptr {new_res}, ptr {temp5}
+                store ptr {new_res}, ptr {temp}
                 {ctr} = alloca i32
                 store i32 0, ptr {ctr}
             {loop_block}:
@@ -300,16 +310,12 @@ class Builder:
             return s,new_block_name 
         else:#struct
             struct=self.StructDefinitions[type.type]
-            newres=self.GenTempName()
             length=len(struct.field_names)
-            s=f"    {newres} = load %{struct}, ptr {res}\n"
             for i in range(length):
-                temp=self.GenTempName()
                 src=self.GenTempName()
                 dest=self.GenTempName()
-                s+=f'''{temp} = getelementptr %{struct}, ptr {type.identifier}, i32 0, i32 {i}
-                    {src} = load {self.GetIRType(struct.field_types[i])}, ptr {temp}
-                    {dest} = getelementptr %{struct}, ptr {new_res}, i32 0, i32 {i}\n'''
+                s+=f'''{src} = extractvalue %{struct} {type.identifier}, i32 {i}
+                    {dest} = getelementptr %{struct}, ptr {res}, i32 0, i32 {i}\n'''
                 news,block_name=self.Clone(IRType(type=struct.field_types[i],identifier=src),dest,block_name)
                 s+=news
             return s,block_name
@@ -320,33 +326,25 @@ class Builder:
         else:
             return f"    store {self.GetAllocType(type.type)} {type.identifier}, ptr {res}\n"
         
-    def VecOp(self,type:IRType,innerType:str,func_name:str,block_name:str,arg:IRType=None):#return s,Type,block_name
+    def VecOp(self,innerType:str,func_name:str,block_name:str,args:list[IRType])->tuple[str,IRType,str]:#return s,Type,block_name,args[0].type is &Vec
         temp=self.GenTempName()
         if func_name=="len":
             temp1=self.GenTempName()
-            s=f"   {temp1} = getelementptr %Vec, ptr {type.identifier}, i32 0, i32 0\n    {temp} = load i32, ptr {temp1}\n"
+            s=f"   {temp1} = getelementptr %Vec, ptr {args[0].identifier}, i32 0, i32 0\n    {temp} = load i32, ptr {temp1}\n"
             return s,IRType(type="usize",identifier=temp),block_name
         elif func_name=="is_empty":
             temp1=self.GenTempName()
             temp2=self.GenTempName()
-            s=f"   {temp1} = getelementptr %Vec, ptr {type.identifier}, i32 0, i32 0\n    {temp2} = load i32, ptr {temp1}\n   {temp} = icmp eq i32 {temp2},0\n"
+            s=f"   {temp1} = getelementptr %Vec, ptr {args[0].identifier}, i32 0, i32 0\n    {temp2} = load i32, ptr {temp1}\n   {temp} = icmp eq i32 {temp2},0\n"
             return s,IRType(type="bool",identifier=temp),block_name
         elif func_name=="new":
             alloc_type=self.GetAllocType(innerType)
             res=self.GenTempName()
             ptr=self.GenTempName()
-            length_ptr=self.GenTempName()
-            cap_ptr=self.GenTempName()
-            pointer_ptr=self.GenTempName()
             s=f'''  {temp} = alloca %Vec
-                {res} = load %Vec, ptr {temp}
                 {ptr} = alloca [2 x {alloc_type}]
-                {length_ptr} = getelementptr %Vec, ptr {res}, i32 0, i32 0   
-                store i32 0, ptr {length_ptr}
-                {cap_ptr} = getelementptr %Vec, ptr {res}, i32 0, i32 1   
-                store i32 2, ptr {cap_ptr}
-                {pointer_ptr} = getelementptr %Vec, ptr {res}, i32 0, i32 2  
-                store ptr {ptr}, ptr {pointer_ptr}'''
+                store %Vec {{ i32 0, i32 2, ptr {ptr} }}, ptr {temp}
+                {res} = load %Vec, ptr {temp}\n'''
             return s,IRType(type=f"Vec<{innerType}>",identifier=res,left=temp),block_name
         elif func_name=="push":
             length_ptr=self.GenTempName()
@@ -373,13 +371,13 @@ class Builder:
             if_block=self.GenBlockName()
             else_block=self.GenBlockName()
             loop_block=self.GenBlockName()
-            s=f'''   {length_ptr} = getelementptr %Vec, ptr {type.identifier}, i32 0, i32 0   
+            s=f'''   {length_ptr} = getelementptr %Vec, ptr {args[0].identifier}, i32 0, i32 0   
                 {length} = load i32, ptr {length_ptr}
                 {new_length} = add i32 {length},1
                 store i32 {new_length}, ptr {length_ptr}
-                {cap_ptr} = getelementptr %Vec, ptr {type.identifier}, i32 0, i32 1   
+                {cap_ptr} = getelementptr %Vec, ptr {args[0].identifier}, i32 0, i32 1   
                 {cap} = load i32, ptr {length_ptr}
-                {pointer_ptr} = getelementptr %Vec, ptr {type.identifier}, i32 0, i32 2   
+                {pointer_ptr} = getelementptr %Vec, ptr {args[0].identifier}, i32 0, i32 2   
                 {pointer} = load ptr, ptr {pointer_ptr}
                 {if_full} = icmp eq i32 {length}, {cap}
                 br i1 {if_full}, label {if_block}, label {else_block}
@@ -407,7 +405,7 @@ class Builder:
                 {truepointer} = load ptr, ptr {pointer_ptr}
                 {newdest} = getelementptr {alloc_type}, ptr {truepointer}, i32 {length}
             '''
-            s+=self.Move(IRType(type=innerType,identifier=arg.identifier),newdest,else_block)
+            s+=self.Move(IRType(type=innerType,identifier=args[-1].identifier),newdest,else_block)
             return s,IRType(type="()",identifier=temp),else_block
         elif func_name=="remove":
             length_ptr=self.GenTempName()
@@ -433,19 +431,19 @@ class Builder:
             loop_block=self.GenBlockName()
             if_block=self.GenBlockName()
             new_block=self.GenBlockName()
-            s=f'''  {length_ptr} = getelementptr %Vec, ptr {type.identifier}, i32 0, i32 0   
+            s=f'''  {length_ptr} = getelementptr %Vec, ptr {args[0].identifier}, i32 0, i32 0   
                 {length} = load i32, ptr {length_ptr}
                 {new_length} = sub i32 {length},1
                 store i32 {new_length}, ptr {length_ptr}
-                {pointer_ptr} = getelementptr %Vec, ptr {type.identifier}, i32 0, i32 2   
+                {pointer_ptr} = getelementptr %Vec, ptr {args[0].identifier}, i32 0, i32 2   
                 {pointer} = load ptr, ptr {pointer_ptr}
-                {ans_ptr} = getelementptr {alloc_type}, ptr {pointer}, i32 {arg.identifier}
+                {ans_ptr} = getelementptr {alloc_type}, ptr {pointer}, i32 {args[0].identifier}
                 {ans} = load {alloc_type}, ptr {ans_ptr}
-                {cond} = icmp eq i32 {new_length}, {arg.identifier}
+                {cond} = icmp eq i32 {new_length}, {args[-1].identifier}
                 br i1 {cond}, label {new_block}, label {prep_block}
             {prep_block}:
                 {ctr} = alloca i32
-                store i32 {arg.identifier}, ptr {ctr}
+                store i32 {args[-1].identifier}, ptr {ctr}
             {loop_block}:
                 {idx} = load i32, ptr {ctr}
                 {idx_1} = add i32 {idx}, 1
@@ -461,13 +459,14 @@ class Builder:
         else:#clone
             res=self.GenTempName()
             val=self.GenTempName()
+            src=self.GenTempName()
             s=f'''{res} = alloca %Vec
-            {val} = load %Vec, ptr {res}\n'''
-            news,block_name=self.Clone(IRType(type=f"Vec<{innerType}",identifier=type.identifier),res,block_name)
-            return s+news,IRType(type=f"Vec<{innerType}>",identifier=val,left=res),block_name
+                {src} = load %Vec, ptr {args[0].identifier}\n'''
+            news,block_name=self.Clone(IRType(type=f"Vec<{innerType}",identifier=src),res,block_name)
+            return s+news+f'    {val} = load %Vec, ptr {res}\n',IRType(type=f"Vec<{innerType}>",identifier=val,left=res),block_name
 
 
-    def BoxOp(self,type:IRType,innerType:str,func_name:str,block_name:str,arg:IRType=None):#return s,Type,block_name                    
+    def BoxOp(self,type:IRType,innerType:str,func_name:str,block_name:str,arg:IRType):#return s,Type,block_name                    
         if func_name=="new":
             res=self.GenTempName()
             val=self.GenTempName()
@@ -480,14 +479,66 @@ class Builder:
         else:#clone     
             res=self.GenTempName()
             val=self.GenTempName()
+            src=self.GenTempName()
             s=f'''{res} = alloca ptr
-            {val} = load ptr, ptr {res}\n'''
-            news,block_name=self.Clone(IRType(type=f"Box<{innerType}",identifier=type.identifier),res,block_name)
-            return s+news,IRType(type=f"Box<{innerType}>",identifier=val,left=res),block_name         
+            {src} = load ptr, ptr {arg.identifier}\n'''
+            news,block_name=self.Clone(IRType(type=f"Box<{innerType}",identifier=src),res,block_name)
+            return s+news+f'    {val} = load %Vec, ptr {res}\n',IRType(type=f"Box<{innerType}>",identifier=val,left=res),block_name         
                         
-                
+    def CallFunction(self,funcName:str,args:list[ast_nodes.Expression],block_name:str)-> tuple[IRType,str]:
+        if funcName.startswith("Vec<"):#vec
+            innerType=funcName[4:funcName("::")]
+            funcName=funcName[funcName.index("::")+2:]
+            if funcName!="new":
+                self.AutoDereference(args[0],f"& Vec<{innerType}>")
+            if funcName in ["push","remove"]:
+                self.AutoDereference(args[-1],innerType if funcName=="push" else "usize")
+            s,type,block_name=self.VecOp(innerType,funcName,block_name,args)
+            self.block+=s
+            return type,block_name
+        elif funcName.startswith("Box<"):
+            innerType=funcName[4:funcName("::")]
+            funcName=funcName[funcName.index("::")+2:]
+            if funcName=="clone":
+                self.AutoDereference(args[0],f"& Box<{innerType}>")
+            else:#new
+                self.AutoDereference(args[0],innerType)
+            s,type,block_name=self.BoxOp(innerType,funcName,block_name,args[0])
+            self.block+=s
+            return type,block_name
+        else:            
+            if funcName.count("::")==1 and funcName[funcName.index("::")+2:]=="clone":#if defined clone, use the user-defined clone
+                struct=funcName[:funcName.index("::")]
+                self.AutoDereference(args[0],'& '+struct)
+                res=self.GenTempName()
+                val=self.GenTempName()
+                src=self.GenTempName()
+                s=f'''  {res} = alloca %{struct}
+                    {src} = load %{struct}, ptr {args[0].identifier}\n'''
+                news,block_name=self.Clone(IRType(type=struct,identifier=src),res,block_name)
+                self.block+=s+news+f'   {val} = load %{struct}, ptr {res}\n'
+                return IRType(type=struct,identifier=val,left=res),block_name     
+            else:
+                newname=self.FunctionNewNames[funcName]
+                func=self.FunctionDefinitions.get(newname)
+                s=""
+                for i in range(len(args)):
+                    self.AutoDereference(args[i],func.param_types[i])
+                for i in range(len(args)):
+                    s+=f"{self.GetAllocType(args[i].type)} {args[i].identifier}"
+                    if i!=len(args)-1:
+                        s+=", "
+                temp=self.GenTempName()
+                if func.retType!="()":
+                    self.block+=f''' {temp} =  call {self.GetAllocType(func.retType)} @{newname}({s})\n'''
+                    return IRType(type=func.retType,identifier=temp),block_name
+                else:
+                    self.block+=f'''    call void @{newname}({s})
+                        {temp} = freeze %Unit zeroinitializer\n'''
+                    return IRType(type="()",identifier=temp),block_name  
 
-    def ParseExpression(self,scope:IRScope,expression:ast_nodes.Expression,block_name:str,break_name:str=None,continue_name:str=None)->IRType:
+                
+    def ParseExpression(self,scope:IRScope,expression:ast_nodes.Expression,block_name:str,break_name:str=None,continue_name:str=None)->tuple[IRType,str]:
         if isinstance(expression,ast_nodes.PrimitiveExpression):
             if expression.op in self.assignmentOps or expression.op in self.comparisonOps:
                 type0,block_name=self.ParseExpression(scope,expression.expressions[0],block_name,break_name=break_name,continue_name=continue_name)
@@ -528,107 +579,162 @@ class Builder:
             type0,block_name=self.ParseExpression(scope,expression.primaryExpression,block_name,break_name=break_name,continue_name=continue_name)
             for suffix in expression.postfixSuffixes:
                 if isinstance(suffix,ast_nodes.CallArguments):#need to dereference first!
-                    #if type0 is a function, type0.type is function old name, type0.identifier is self variable(if exists)
-                    if type0.type.startswith("Vec<"):#vec
-                        arg=None
-                        innerType=type0.type[4:type0.type.index("::")]
-                        func_name=type0.type[type0.type.index("::")+2:]
-                        if func_name!="new":
-                            type0,block_name=self.ParseExpression(scope,suffix.expression[0],block_name,break_name=break_name,continue_name=continue_name)
-                        if func_name in ["push","remove"]:
-                            arg,block_name=self.ParseExpression(scope,suffix.expression[-1],block_name,break_name=break_name,continue_name=continue_name)
-                        s,type,block_name=self.VecOp(type0,innerType,func_name,block_name,arg=arg)
-                        self.block+=s
-                        return type,block_name
-                    elif type0.type.startswith("Box<"):
-                        arg=None
-                        innerType=type0.type[4:type0.type.index("::")]
-                        func_name=type0.type[type0.type.index("::")+2:]
-                        if func_name=="clone":
-                            type0,block_name=self.ParseExpression(scope,suffix.expression[0],block_name,break_name=break_name,continue_name=continue_name)
-                        else:#new
-                            arg,block_name=self.ParseExpression(scope,suffix.expression[0],block_name,break_name=break_name,continue_name=continue_name)
-                        s,type,block_name=self.BoxOp(type0,innerType,func_name,block_name,arg=arg)
-                        self.block+=s
-                        return type,block_name
-                    else:            
-                        if type.count("::")==1 and type[type.index("::")+2:]=="clone":#if defined clone, use the user-defined clone
-                            struct=type[:type.index("::")]
-                            type0,block_name=self.ParseExpression(scope,suffix.expressions[0],block_name,break_name=break_name,continue_name=continue_name)
-                            res=self.GenTempName()
-                            val=self.GenTempName()
-                            s=f'''{res} = alloca %{struct}
-                            {val} = load %{struct}, ptr {res}\n'''
-                            news,block_name=self.Clone(type0,res,block_name)
-                            self.block+=s+news
-                            return IRType(type=struct,identifier=val,left=res),block_name     
+                    args=[]
+                    for expression in suffix.expressions:
+                        type,block_name=self.ParseExpression(scope,expression,block_name,break_name=break_name,continue_name=continue_name)
+                        args.append(type)
+                    type0,block_name = self.CallFunction(type0.type[1:],args,block_name)
+                    
+                elif isinstance(suffix,ast_nodes.BracketSuffix):
+                    idx,block_name=self.ParseExpression(scope,suffix.expression,block_name,break_name=break_name,continue_name=continue_name)                             
+                    self.AutoDereference(type0)
+                    res=self.GenTempName()
+                    if type0.type.startswith("Vec<"):
+                        temp=self.GenTempName()
+                        ptr=self.GenTempName()
+                        innerType=type0.type[4:-1]
+                        alloc_type=self.GetAllocType(innerType)
+                        self.block+=f'''    {temp} = extractvalue %Vec {type0.identifier}, 2
+                            {ptr} = getelementptr {alloc_type}, ptr {temp}, i32 {idx.identifier}
+                            {res} = load {alloc_type}, ptr {ptr}\n'''
+                        type0 = IRType(type=innerType,identifier=res,left=ptr)
+                    else:
+                        innerType=self.GetArrayInfo(type0.type)[0]
+                        alloc_type=self.GetAllocType(innerType)
+                        self.block+=f'''    {ptr} = getelementptr {alloc_type}, ptr {temp}, i32 {idx.identifier}
+                            {res} = load {alloc_type}, ptr {ptr}\n'''
+                        type0=IRType(type=innerType,identifier=res,left=ptr)
+                            
+                elif isinstance(suffix,ast_nodes.DotSuffix):
+                    if isinstance(suffix,ast_nodes.DotSuffixData):#structs must have left
+                        self.AutoDereference(type0)
+                        struct=self.StructDefinitions.get(type0)
+                        idx=struct.fields_names.index(suffix.identifier)
+                        data_type=struct.field_types[idx]
+                        res=self.GenTempName()
+                        ptr=self.GenTempName()
+                        self.block+=f'''{ptr} = getelementptr %{type0.type}, ptr {type0.left}, i32 0, i32 {idx}
+                            {res} = load {self.GetAllocType(data_type)}, ptr {ptr}\n'''
+                        type0=IRType(type=struct.field_types[idx],identifier=res,left=ptr)
+            
+                    elif isinstance(suffix,ast_nodes.DotSuffixMethod):
+                        identifier=suffix.pathExprSegment.identifier
+                        if '@' in identifier:#clone or len:
+                            if identifier.startswith("clone"):
+                                cloneType=self.GetIRType(cloneType)
+                                alloc_type=self.GetAllocType(cloneType)
+                                self.AutoDereference(type0,cloneType)
+                                res=self.GenTempName()
+                                val=self.GenTempName()
+                                s,block_name=self.Clone(type0,res,block_name)
+                                self.block+=f'    {res} = alloca {alloc_type}\n'+s+f'    {val} = load {alloc_type}, ptr {res}\n'
+                                type0=IRType(type=cloneType,identifier=val,left=res)
+                            else:#array len is fixed!
+                                return IRType(type='usize',identifier=str(self.GetArrayInfo(type0.type)[1]))
                         else:
-                                        has_self=(func.self is not None)
-                                        if len(suffix.expressions)!=len(func.paramNames)+has_self:
-                                            raise SemanticError(f"param number not align!  {len(suffix.expressions)}!={len(func.paramNames)+has_self}")
-                                        for i in range(has_self,len(suffix.expressions)):
-                                            self.ParseExpression(scope,suffix.expressions[i],expected=func.params[i-has_self].type,impl=impl,inloop=inloop)
-                                        if has_self:
-                                            self_type=("&mut " if (func.self.amp and func.self.mut) else ("& " if func.self.amp else ""))+func.name[:func.name.index("::")]#impl
-                                            self.ParseExpression(scope,suffix.expressions[0],expected=self_type,impl=impl,inloop=inloop)
-                                        type0=Type(mut=False,mut_blocked=False,left=False,type=func.returnType.type if func.returnType else "()")
-                            else:
-                                raise SemanticError(f"not function! {type0.type}")
-                        elif isinstance(suffix,ast_nodes.BracketSuffix):
-                            type=self.dereference(type0)
-                            if not type.left:#materialize right value
-                                type.left = True
-                                type.mut = not type.mut_blocked
-                            if type.type.startswith("Vec<") or type.type.startswith("["):
-                                self.ParseExpression(scope,suffix.expression,expected='usize',impl=impl,inloop=inloop)
-                                type0=Type(mut=type.mut,mut_blocked=type.mut_blocked if type.type.startswith("[") else (type.mut_blocked or not type.mut),left=True,type=self.GetArrayInner(type.type)[0] if type.type.startswith("[") else type.type[4:-1])
-                            else:
-                                raise SemanticError(f"not array! {type0.type}")
-                        elif isinstance(suffix,ast_nodes.DotSuffix):
-                            type=self.dereference(type0).type
-                            struct=self.StructDefinitions.get(type)
-                            if (not struct or not self.FunctionDefinitions.get(type+"::clone")) and isinstance(suffix,ast_nodes.DotSuffixMethod) and suffix.pathExprSegment.identifier=="clone" and not suffix.pathExprSegment.genericArgs and len(suffix.callarguments.expressions)==0:#special check for built-in clone!
-                                type0=Type(mut=False,mut_blocked=False,left=False,type=self.GetClone(type0.type))
-                            elif self.dereference(type0).type.startswith("[") and isinstance(suffix,ast_nodes.DotSuffixMethod) and suffix.pathExprSegment.identifier=="len" and not suffix.pathExprSegment.genericArgs and  len(suffix.callarguments.expressions)==0:#len
-                                type0=Type(mut=False,mut_blocked=False,left=False,type="usize")
-                            else:
-                                type0=self.dereference(type0)
-                                if not type0.left:
-                                    type0.left = True
-                                    type0.mut = not type0.mut_blocked
-                                if not struct and not type.startswith("Vec<") and not type.startswith("Box<") :
-                                    raise SemanticError(f"struct {type} does not exist!")
-                                if isinstance(suffix,ast_nodes.DotSuffixData):
-                                    if type.startswith("Vec<") or type.startswith("Box<"):
-                                        raise SemanticError("Vec or Box has not data member!")
-                                    structField=struct.fields.get(suffix.identifier)
-                                    if not structField:
-                                        raise SemanticError(f"field {suffix.identifier} does not exist in struct {type}!")
-                                    type0=Type(mut=type0.mut and not type0.mut_blocked,mut_blocked=type0.mut_blocked,left=True,type=structField.type)
-                                elif isinstance(suffix,ast_nodes.DotSuffixMethod):
-                                    arguments=suffix.callarguments
-                                    if suffix.pathExprSegment.genericArgs:
-                                        raise SemanticError(f"function {type}::{suffix.pathExprSegment.identifier} has genericArgs!")
-                                    if type.startswith("Vec<") or type.startswith("Box<"):
-                                        type0=self.CheckVecBox(type[:3],suffix.pathExprSegment.identifier,scope,suffix.callarguments.expressions,type[4:-1],impl=impl,inloop=inloop,type0=type0)
-                                    else:
-                                        func=self.FunctionDefinitions.get(type+"::"+suffix.pathExprSegment.identifier)
-                                        if not func:
-                                            raise SemanticError(f"function {type}::{suffix.pathExprSegment.identifier} does not exist!")
-                                        if not func.self:
-                                            raise SemanticError(f"function {type}::{suffix.pathExprSegment.identifier} does not have self param!")
-                                        if func.self.mut and func.self.amp and (not (type0.mut and not type0.mut_blocked)):
-                                            raise SemanticError("not mut self!")
-                                        if len(arguments.expressions)!=len(func.paramNames):
-                                            raise SemanticError(f"param number not align!  {len(arguments.expressions)}!={len(func.paramNames)}")
-                                        for i in range(len(arguments.expressions)):
-                                            self.ParseExpression(scope,arguments.expressions[i],expected=func.params[i].type,impl=impl,inloop=inloop)
-                                        type0=Type(mut=False,mut_blocked=False,left=False,type=func.returnType.type if func.returnType else "()")
-                    if expected:
-                        if not self.CanTransform(type0.type,expected,type0.mut_blocked):
-                            raise SemanticError(f"expression type error! {type0.type} != {expected}")
-                        type0.type=expected
-                    return type0
+                            args=[type0]
+                            for i in range(len(suffix.callarguments.expressions)):
+                                type,block_name=self.ParseExpression(scope,suffix.callarguments.expressions[i],block_name,break_name=break_name,continue_name=continue_name)
+                                args.append(type)
+                            funcName=self.dereference(type0.type)+"::"+identifier
+                            type0,block_name = self.CallFunction(funcName,args,block_name)                   
+            return type0,block_name
+        elif isinstance(expression,ast_nodes.NonBlockPrimary):
+            if expression.type=='literal':
+                return self.ParseExpression(scope,expression.expression,block_name,break_name=break_name,continue_name=continue_name)
+            elif expression.type=='path':
+                if expression.structExprFields==None:#reference by name
+                    typePathSegments=expression.expression.typePathSegments
+                    if '<' in typePathSegments[0].identifier:#Vec or Box
+                        return IRType(type=f"#{typePathSegments[0].identifier}::{typePathSegments[1].identifier}",identifier=None),block_name
+              
+                    else:
+                        #check genericArgs
+                        for each in typePathSegments:
+                            if len(each.genericArgs)>0:
+                                raise SemanticError(f"genericArgs!")
+                        name=typePathSegments[-1].identifier
+                        if len(typePathSegments)==2:#impl
+                            if typePathSegments[0].identifier=="Self":
+                                if impl:
+                                    typePathSegments[0].identifier==impl
+                                else:
+                                    raise SemanticError(f"invalid use of Self!")
+                            name=typePathSegments[0].identifier+"::"+name
+                        var=scope.get(name)#reference by name,may be function or variable
+                        if expected and not self.CanTransform(var.type,expected,var.mut_blocked):
+                            raise SemanticError(f"expression type error! {var.type} != {expected}")
+                        return Type(mut=var.mut,mut_blocked=var.mut_blocked,left=var.left,type=expected if expected else var.type)
+                else:#build Struct
+                    typePathSegments=expression.expression.typePathSegments
+                    args=expression.structExprFields
+                    if len(typePathSegments)!=1 or len(typePathSegments[0].genericArgs)!=0:
+                        raise SemanticError("invalid struct!")
+                    if typePathSegments[0].identifier=="Self":
+                        if impl:
+                            typePathSegments[0].identifier=impl
+                        else:
+                            raise SemanticError("use Self outside impl!")
+                    struct=self.StructDefinitions.get(typePathSegments[0].identifier)
+                    if not struct:
+                        raise SemanticError(f"struct {typePathSegments[0].identifier} doesn't exist!")
+                    identifiers=[arg.identifier for arg in args]
+                    if len(identifiers)!=len(list(set(identifiers))):
+                        raise SemanticError(f"repetitive args for struct {struct.type} construction!")
+                    if len(struct.fields)!=len(identifiers):
+                        raise SemanticError(f"invalid struct len! {len(struct.fields)}!={len(identifiers)}")
+                    for arg in args:
+                        structField=struct.fields.get(arg.identifier)
+                        if not structField:
+                            raise SemanticError(f"invalid arg name {arg.identifer} for struct {struct.type}")
+                        self.ParseExpression(scope,arg.expression,expected=structField.type,impl=impl,inloop=inloop)
+                    if expected and not self.CanTransform(typePathSegments[0].identifier,expected):
+                        raise SemanticError(f"expression type error! {typePathSegments[0].identifier} != {expected}")
+                    return Type(mut=False,mut_blocked=False,left=False,type=expected if expected else typePathSegments[0].identifier)
+                            
+
+            elif expression.type=='paren':
+                if expression.expression:
+                    return self.ParseExpression(scope,expression.expression,expected=expected,impl=impl,inloop=inloop)
+                else:
+                    if expected and not self.CanTransform("()",expected):
+                        raise SemanticError(f"expression type error! () != {expected}")
+                    return Type(mut=False,mut_blocked=False,left=False,type=expected if expected else "()")
+            elif expression.type=='array':
+                return self.ParseExpression(scope,expression.expression,expected=expected,impl=impl,inloop=inloop)
+            elif expression.type=='break':
+                if inloop and inloop.loop:
+                    if expression.expression:
+                        if inloop.loop=="while":
+                            raise SemanticError("break expr inside while!")
+                        new_type=self.ParseExpression(scope,expression.expression,expected=inloop.expectedType,impl=impl,inloop=inloop).type
+                        if not inloop.expectedType:
+                            inloop.retType=self.MergeType(inloop.retType,new_type)
+                    else:#return ()
+                        if not inloop.expectedType:
+                            inloop.retType=self.MergeType(inloop.retType,"()")
+                        elif not self.CanTransform("()",inloop.expectedType):
+                            raise SemanticError(f"expression type error! () != {inloop.expectedType}")
+                    inloop.has_break=inloop.has_never=True
+                    return Type(mut=False,mut_blocked=False,left=False,type="^")
+                else:
+                    raise SemanticError("break outside loop!")
+            elif expression.type=='return':
+                retType=self.FunctionDefinitions.get(self.functionName).returnType
+                type=retType.type if retType else "()"
+                if expression.expression:
+                    self.ParseExpression(scope,expression.expression,expected=type,impl=impl,inloop=inloop)
+                else:#return ()
+                    if type and not self.CanTransform("()",type):
+                        raise SemanticError(f"function return type error! () != {type}")
+                inloop.has_never=True
+                return Type(mut=False,mut_blocked=False,left=False,type="^")
+            elif expression.type=='continue':
+                if not inloop or not inloop.loop:
+                    raise SemanticError("continue outside loop!")
+                inloop.has_never=True
+                return Type(mut=False,mut_blocked=False,left=False,type="^")
+
         
 
 
@@ -637,18 +743,17 @@ class Builder:
         self.StructDefinitions["Unit"]=IRStruct(identifier="Unit",field_names=[],field_types=[])
         #Box<T> is special ptr
 
+        self.global_scope=IRScope(vars={},parent=global_scope)
+        for name in self.checker.FunctionDefinitions:
+            self.global_scope.register(name,Variable(mut=False,mut_blocked=False,left=False,type=f'#{name}',name=name))
+        for name in self.checker.ConstValues:
+            self.global_scope.register(name,IRType(type=self.ConstValues[name].type,name=name))
+
         for structName in self.checker.StructOrder:
             struct=self.checker.StructDefinitions[structName]
-            field_names=[]
-            field_types=[]
-            for field_name in struct.fields:
-                field_names.append(field_name)
-                field_types.append(self.GetIRType(struct.fields[field_name].type))
-            self.StructDefinitions[structName]=IRStruct(identifier=structName,field_names=field_names,field_types=field_types)
-
+            self.StructDefinitions[structName]=IRStruct(identifier=structName,field_names=[field_name for field_name in struct.fields],field_types=[self.GetIRType(struct.fields[field_name]) for field_name in struct.fields])
         for functionName in self.checker.FunctionDefinitions:
             func=self.checker.FunctionDefinitions[functionName]
-            self.tempctr=self.varctr=self.blockctr=0
             self.funcctr+=1
             newFuncName=f"func{self.funcctr}" if functionName!="main" else "main"
             self.FunctionNewNames[functionName]=newFuncName
@@ -656,31 +761,31 @@ class Builder:
             param_types=[]
             paramctr=0
             self.block="entry:\n"
-            function_scope=IRScope(vars={},parent=None)
+            function_scope=IRScope(vars={},parent=self.global_scope)
             #register function parameters
             if func.self:
                 impl=functionName[:functionName.index("::")]
                 paramctr+=1
-                varname=self.GenVarName()
+                varname=f'%prm{paramctr}'
                 param_names.append("%param1")
-                param_types.append("ptr" if func.self.amp else f"%{impl}")
-                function_scope.register("self",IRType(identifier=varname,type=impl if not func.self.amp else (f'& {impl}' if not func.self.mut else f'&mut {impl}')))
-                self.blocks["entry"].statements+=self.BuildAndStore(varname,f"%param{paramctr}",param_types[-1])
+                param_types.append("& "+impl if func.self.amp else impl)
+                function_scope.register("self",IRType(identifier=varname,type=impl if not func.self.amp else '& '+impl))
+                self.block+=self.BuildAndStore(varname,f"%param{paramctr}",param_types[-1])
             for i in range(len(func.paramNames)):#function params should have addr
                 paramctr+=1
-                varname=self.GenVarName()
+                varname=f'%prm{paramctr}'
                 param_names.append(f"%param{paramctr}")
                 param_types.append(self.GetIRType(func.params[i].type))
                 function_scope.register(func.paramNames[i],IRType(identifier=varname,type=func.params[i].type))
-                self.blocks["entry"].statements+=self.BuildAndStore(varname,f"%param{paramctr}",param_types[-1])
-            self.ParseExpression(function_scope,func.body,"entry")
-            func_blocks=[]
-            for each in self.blockOrder:
-                func_blocks.append(self.blocks[each])
-            self.FunctionDefinitions[newFuncName]=IRFunction(identifier=functionName,retType=self.GetIRType(func.returnType.type),param_names=param_names,param_types=param_types,block=self.block)
-             
+                self.block+=self.BuildAndStore(varname,f"%param{paramctr}",param_types[-1])
+            self.FunctionDefinitions[newFuncName]=IRFunction(identifier=functionName,retType=func.returnType.type,param_names=param_names,param_types=param_types,block=self.block,scope=function_scope,body=func.body)
 
-
+        for newFuncName in self.FunctionDefinitions:
+            self.tempctr=self.varctr=self.blockctr=0
+            self.block="" 
+            func=self.FunctionDefinitions[newFuncName]
+            self.ParseExpression(func.scope,func.body,"entry")  
+            func.block+=self.block
 
         #output
         with open(self.output,"w") as f:
