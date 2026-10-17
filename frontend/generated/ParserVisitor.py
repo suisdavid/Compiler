@@ -310,7 +310,7 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.ifExpression():
             return self.visit(ctx.ifExpression())
         else:
-            return ast_nodes.NormalExpressionWithBlock(blockExpression=self.visit(ctx.blockExpression()),loop=(ctx.LOOP() is not None) or (ctx.WHILE() is not None),conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)
+            return ast_nodes.NormalExpressionWithBlock(blockExpression=self.visit(ctx.blockExpression()),loop='1' if ((ctx.LOOP() is not None) or (ctx.WHILE() is not None)) else '',conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)
 
 
     # Visit a parse tree produced by Parser#ifExpression.
@@ -1122,7 +1122,7 @@ class ParserVisitor(ParseTreeVisitor):
         if ctx.ifExpression():
             return self.visit(ctx.ifExpression())
         elif ctx.LOOP() or ctx.WHILE():
-            return ast_nodes.NormalExpressionWithBlock(blockExpression=self.visit(ctx.blockExpression()),loop=ctx.LOOP() or ctx.WHILE(),conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)   
+            return ast_nodes.NormalExpressionWithBlock(blockExpression=self.visit(ctx.blockExpression()),loop='1',conditionExpression=self.visit(ctx.conditionExpression()) if ctx.conditionExpression() else None)   
         else:#PATH
             return ast_nodes.NonBlockPrimary(expression=self.visit(ctx.pathInExpression()),type="path",structExprFields=None)
 

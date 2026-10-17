@@ -697,7 +697,7 @@ class Checker:
                             if len(typePathSegments[1].genericArgs)!=0:
                                 raise SemanticError(f"function {typePathSegments[1].identifier} has genericArgs!")  
                             typePathSegments[0].identifier=f"#{type}::{typePathSegments[1].identifier}"#for IR
-                            return Type(mut=False,mut_blocked=False,left=False,type=f"#{type}::{typePathSegments[1].identifier}")
+                            return Type(mut=False,mut_blocked=False,left=False,type=typePathSegments[0].identifier)
                         else:
                             raise SemanticError(f"invalid reference of {typePathSegments[0].identifier}!")
                     else:
@@ -716,7 +716,7 @@ class Checker:
                         var=scope.get(name)#reference by name,may be function or variable
                         if expected and not self.CanTransform(var.type,expected,var.mut_blocked):
                             raise SemanticError(f"expression type error! {var.type} != {expected}")
-                        typePathSegments[0].identifier=name
+                        typePathSegments[0].identifier=name#for IR
                         return Type(mut=var.mut,mut_blocked=var.mut_blocked,left=var.left,type=expected if expected else var.type)
                 else:#build Struct
                     typePathSegments=expression.expression.typePathSegments
@@ -805,12 +805,15 @@ class Checker:
                     self.ParseExpression(scope,expression.blockExpression,expected="()",impl=impl,inloop=loopContext)
                     if not loopContext.has_break:
                         inloop.has_never=True
+                        expression.loop="^"
                         return Type(mut=False,mut_blocked=False,left=False,type="^")
                     else:
                         if loopContext.retType=="^":
                             inloop.has_never=True
+                            expression.loop="^"#for IR
                             return Type(mut=False,mut_blocked=False,left=False,type="^")
                         else:
+                            expression.loop=loopContext.retType#for IR
                             return Type(mut=False,mut_blocked=False,left=False,type=expected if expected else loopContext.retType)
             else:
                 return self.ParseExpression(scope,expression.blockExpression,expected=expected,impl=impl,inloop=inloop)
@@ -822,6 +825,7 @@ class Checker:
                 ctx2=LoopContext(loop=inloop.loop,has_break=inloop.has_break,has_never=False,expectedType=inloop.expectedType,retType=inloop.retType)
                 type0=self.ParseExpression(scope,expression.thenExpressions[0],expected=expected,impl=impl,inloop=ctx1)
                 type1=self.ParseExpression(scope,expression.thenExpressions[1],expected=expected,impl=impl,inloop=ctx2)
+                expression.retType=self.MergeType(type0.type,type1.type,type0.mut_blocked,type1.mut_blocked)
                 inloop.has_break |= ctx1.has_break or ctx2.has_break
                 if not inloop.expectedType:
                     inloop.retType=self.MergeType(inloop.retType,self.MergeType(ctx1.retType,ctx2.retType))
@@ -852,6 +856,7 @@ class Checker:
                self.ParseStatement(newscope,statement,impl=impl,inloop=inloop)
             ret=self.ParseExpression(newscope,expression.statementexpression,expected=expected,impl=impl,inloop=inloop) if expression.statementexpression else Type(mut=False,mut_blocked=False,left=False,type="()")
             if inloop.has_never:
+                expression.has_never=True#for IR
                 return Type(mut=False,mut_blocked=False,left=False,type="^")
             elif expected and not self.CanTransform(ret.type,expected,ret.mut_blocked):
                 raise SemanticError(f"expression type error!{ret.type} != {expected}")
@@ -867,6 +872,7 @@ class Checker:
                     raise SemanticError(f"Array length doesn't align! {num}!={len(expression.expressions)} !")
                 for each in expression.expressions:
                     self.ParseExpression(scope,each,expected=innerType,impl=impl,inloop=inloop)
+                expression.type=expected#for IR
                 return Type(mut=False,mut_blocked=False,left=False,type=expected)
             else:
                 if len(expression.expressions)==0:
@@ -879,10 +885,12 @@ class Checker:
                             type0=type1
                         elif not self.CanTransform(type1.type,type0.type,type1.mut_blocked):
                             raise SemanticError(f"types in array are not identical! {type0.type}!={type1.type}")
+                    expression.type=type0.type#for IR
                     return Type(mut=False,mut_blocked=False,left=False,type=f"[{type0.type};{len(expression.expressions)}]")
 
         elif isinstance(expression,ast_nodes.RepeatArrayExpression):
             length=self.ParseConst(expression.length,mustbe='usize',impl=impl).value
+            expression.real_length=length#for IR
             if expected:
                 if expected[0]!='[':
                     raise SemanticError("not Array type!")
@@ -913,9 +921,9 @@ class Checker:
     def ParseStatement(self,scope:Scope,statement:ast_nodes.Statement,impl=None,inloop:LoopContext=None):
         if isinstance(statement,ast_nodes.LetStatement):
             type=self.ParseTypeRef(statement.typeRef,impl=impl).type if statement.typeRef else None
-            variable=Variable(mut=statement.mut,mut_blocked=False,name=statement.identifier,type=type,left=True)
             newtype=self.ParseExpression(scope,statement.value,expected=type,impl=impl,inloop=inloop).type
             variable=Variable(mut=statement.mut,mut_blocked=False,name=statement.identifier,type=type if type else newtype,left=True)
+            statement.type=variable.type#for IR
             scope.register(statement.identifier,variable)
         else:
             if statement.expression:

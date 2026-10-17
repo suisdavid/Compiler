@@ -194,11 +194,12 @@ class NonBlockPrimary(PrimaryExpression):
 class BlockExpression(ConditionPrimary):
     statements: list[Statement]
     statementexpression: Expression
+    has_never:bool=False
 
 
 @dataclass 
 class NormalExpressionWithBlock(ExpressionWithBlock):
-    loop: bool
+    loop: str
     blockExpression: BlockExpression
     conditionExpression: Expression
     
@@ -206,6 +207,7 @@ class NormalExpressionWithBlock(ExpressionWithBlock):
 class IfExpression(ExpressionWithBlock):#switch expressions
     conditionExpression: Expression
     thenExpressions: list[Expression]
+    retType:str=None
     #len(blockExpressions)= len(conditionExpressions) or len(conditionExpressions)+1
 
 @dataclass
@@ -237,11 +239,13 @@ class ArrayExpresssion(Expression):
 @dataclass
 class NormalArrayExpresssion(Expression):
     expressions: list[Expression]
+    type:str=None
 
 @dataclass
 class RepeatArrayExpression(Expression):
     expression: Expression
     length: ConstValue
+    real_length:int=None
 
 
 @dataclass
@@ -250,7 +254,7 @@ class LetStatement(Statement):
     identifier: str
     typeRef: TypeRef
     value: Expression
-
+    type: str=None
 
 @dataclass
 class FunctionDefinition(Item):
