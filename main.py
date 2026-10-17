@@ -48,7 +48,10 @@ if __name__=="__main__":
     except SemanticError as e:
         print(e.errormessage)
         sys.exit(1)
-    builder=Builder(checker,sys.argv[1]+".ll")
+    if len(sys.argv)<3:
+        print("no output file path provided!")
+        sys.exit(0)
+    builder=Builder(checker,sys.argv[2])
     builder.Build()
 
     

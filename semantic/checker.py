@@ -873,7 +873,7 @@ class Checker:
                 for each in expression.expressions:
                     self.ParseExpression(scope,each,expected=innerType,impl=impl,inloop=inloop)
                 expression.type=expected#for IR
-                return Type(mut=False,mut_blocked=False,left=False,type=expected)
+                return Type(mut=False,mut_blocked=False,left=False,type=expression.type)
             else:
                 if len(expression.expressions)==0:
                     return Type(mut=False,mut_blocked=False,left=False,type="[;0]")
@@ -885,8 +885,8 @@ class Checker:
                             type0=type1
                         elif not self.CanTransform(type1.type,type0.type,type1.mut_blocked):
                             raise SemanticError(f"types in array are not identical! {type0.type}!={type1.type}")
-                    expression.type=type0.type#for IR
-                    return Type(mut=False,mut_blocked=False,left=False,type=f"[{type0.type};{len(expression.expressions)}]")
+                    expression.type=f"[{type0.type};{len(expression.expressions)}]"#for IR
+                    return Type(mut=False,mut_blocked=False,left=False,type=expression.type)
 
         elif isinstance(expression,ast_nodes.RepeatArrayExpression):
             length=self.ParseConst(expression.length,mustbe='usize',impl=impl).value
