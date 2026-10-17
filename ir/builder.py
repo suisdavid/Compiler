@@ -27,7 +27,7 @@ class Builder:
         self.blockctr=0
         self.block=""
 
-    def CountPtr(self,type:str)->int,str:
+    def CountPtr(self,type:str)->tuple[int,str]:
         cnt=0
         while True:
             if type.startswith("& "):
@@ -55,7 +55,7 @@ class Builder:
         self.blockctr+=1
         return f"block{self.varctr}"
     
-    def GetIRType(type:str)->str:#replace all &mut with &
+    def GetIRType(self,type:str)->str:#replace all &mut with &
         return type.replace('&mut','&')
 
     def GetArrayInfo(self,type:str)->tuple[str,int]:#array innerType and length
@@ -70,25 +70,25 @@ class Builder:
         return IRType(type="()",identifier=res)
     
     def GetAllocType(self,type:str)->str:
-            if type.startswith("&") or type.startswith("Box<"):
-                return "ptr"
-            elif type.startswith("Vec<"):
-                return "%Vec"
-            elif type=="()":
-                return "%Internal.Unit"
-            elif type in ["i32","u32","isize","usize"]:
-                return "i32"
-            elif type=="bool":
-                return "i1"
-            elif type=='^':
-                return type
-            elif type.startswith("["):
-                innerType,length=self.GetArrayInfo(type)
-                return f"[{length} x {self.GetAllocType(innerType)}]"
-            else:
-                return "%"+type
+        if type.startswith("&") or type.startswith("Box<"):
+            return "ptr"
+        elif type.startswith("Vec<"):
+            return "%Vec"
+        elif type=="()":
+            return "%Internal.Unit"
+        elif type in ["i32","u32","isize","usize"]:
+            return "i32"
+        elif type=="bool":
+            return "i1"
+        elif type=='^':
+            return type
+        elif type.startswith("["):
+            innerType,length=self.GetArrayInfo(type)
+            return f"[{length} x {self.GetAllocType(innerType)}]"
+        else:
+            return "%"+type
 
-    def Dereference(self,type:IRType,cnt=1):#return s,tempname
+    def Dereference(self,type:IRType,cnt=1)->tuple[str,str]:#return s,tempname
         s=""
         last=type.identifier
         lasttype=type.type
@@ -236,7 +236,7 @@ class Builder:
     def Equal(self,type1:IRType,type2:IRType,res:str,block_name:str)->tuple[str,str]:#res is the value that stores the answer
         if type1.type=="()":#nothing should happen
             return f'   {res} = freeze i1,true\n',block_name
-        elif type.type in self.basicTypes:
+        elif type1.type in self.basicTypes:
             return f"   {res} = icmp eq {self.GetAllocType(type1.type)} {type1.identifier}, {type2.identifier}\n",block_name
         elif type1.type.startswith("& ") or type1.type.startswith("Box<"):
             innerType=type1.type[2:] if type1.type.startswith('& ') else type1.type[4:-1]
@@ -247,7 +247,7 @@ class Builder:
                 {t2} = load {alloc_type}, ptr {type2.identifier}\n'''
             news,block_name=self.Equal(IRType(type=innerType,identifier=t1,left=type1.identifier),IRType(type=innerType,identifier=t2,left=type2.identifier),res,block_name)
             return s+news,block_name
-        elif type.type.startswith("["):
+        elif type1.type.startswith("["):
             innerType,length=self.GetArrayInfo(type1.type)
             alloc_type=self.GetAllocType(innerType)
             ctr=self.GenTempName()
@@ -289,8 +289,8 @@ class Builder:
             {win_block}:
                 {res} = load i1, ptr {temp}\n'''     
             return s,win_block
-        elif type.type.startswith("Vec<"):
-            innerType=type.type[4:-1]
+        elif type1.type.startswith("Vec<"):
+            innerType=type1.type[4:-1]
             cond1=self.GenTempName()
             temp=self.GenTempName()
             temp1=self.GenTempName()
@@ -346,7 +346,7 @@ class Builder:
                 {res} = load i1, ptr {temp}\n'''     
             return s,win_block
         else:#struct
-            struct=self.StructDefinitions[type.type]
+            struct=self.StructDefinitions[type1.type]
             length=len(struct.field_names)
             temp=self.GenTempName()
             fail_block=self.GenTempName()
@@ -481,7 +481,7 @@ class Builder:
                 s+=news
             return s,block_name
 
-    def Move(self,type:IRType,res:str):#move struct to res(ptr,already alloced),return s,block_name
+    def Move(self,type:IRType,res:str)->str:#move struct to res(ptr,already alloced),return s,block_name
         if type.type=="()":#nothing should happen
             return ""
         else:
@@ -748,7 +748,7 @@ class Builder:
                         
                     type0,block_name = self.CallFunction(type0.type[1:],args,block_name)
                     
-                elif isinstance(suffix,ast_nodes.BracketSuffix):
+                elif isinstance(suffix,ast_nodes.BracketSuffix):#arrays should also have left
                     idx,block_name=self.ParseExpression(scope,suffix.expression,block_name,break_name=break_name,continue_name=continue_name)                             
                     if idx.type=='^':
                         return IRType(type='^',identifier=None),block_name
@@ -766,15 +766,15 @@ class Builder:
                     else:
                         innerType=self.GetArrayInfo(type0.type)[0]
                         alloc_type=self.GetAllocType(innerType)
-                        self.block+=f'''    {ptr} = getelementptr {alloc_type}, ptr {temp}, i32 {idx.identifier}
+                        self.block+=f'''    {ptr} = getelementptr {alloc_type}, ptr {type0.left}, i32 0, i32 {idx.identifier}
                             {res} = load {alloc_type}, ptr {ptr}\n'''
                         type0=IRType(type=innerType,identifier=res,left=ptr)
                             
                 elif isinstance(suffix,ast_nodes.DotSuffix):
                     if isinstance(suffix,ast_nodes.DotSuffixData):#structs must have left
                         self.AutoDereference(type0)
-                        struct=self.StructDefinitions.get(type0)
-                        idx=struct.fields_names.index(suffix.identifier)
+                        struct=self.StructDefinitions.get(type0.type)
+                        idx=struct.field_names.index(suffix.identifier)
                         data_type=struct.field_types[idx]
                         res=self.GenTempName()
                         ptr=self.GenTempName()
@@ -811,8 +811,8 @@ class Builder:
                 return self.ParseExpression(scope,expression.expression,block_name,break_name=break_name,continue_name=continue_name)
             
             elif expression.type=='path':
+                typePathSegments=expression.expression.typePathSegments
                 if not expression.structExprFields:#reference by name
-                    typePathSegments=expression.expression.typePathSegments
                     if '<' in typePathSegments[0].identifier:#Vec or Box
                         return IRType(type=typePathSegments[0].identifier,identifier=None),block_name
                     else:
@@ -961,7 +961,7 @@ class Builder:
 
 
         elif isinstance(expression,ast_nodes.BlockExpression):
-            newscope=IRScope(values={},parent=scope)
+            newscope=IRScope(vars={},parent=scope)
             for statement in expression.statements:
                 block_name=self.ParseStatement(newscope,statement,block_name,break_name=break_name,continue_name=continue_name)
             type,block_name=self.ParseExpression(newscope,expression.statementexpression,block_name,break_name=break_name,continue_name=continue_name) if expression.statementexpression else (self.GenUnit(),block_name)
@@ -1019,7 +1019,7 @@ class Builder:
             {loop_block}:
                 {temp1} = load i32, ptr {ctr}
                 {dest} = getelementptr [{length} x {alloc_type}], ptr {res}, i32 0, i32 {temp1}\n'''
-            self.block+=self.Move(type,dest,block_name)
+            self.block+=self.Move(type,dest)
             self.block+=f''' {temp2} = add i32 {temp1}, 1
                 store i32 {temp2}, ptr {ctr}
                 {condition} = icmp eq i32 {temp2}, {length}
@@ -1054,11 +1054,11 @@ class Builder:
 
 
     def Build(self):
-        self.StructDefinitions["Vec"]=IRStruct(identifier="Vec",field_names=["length","cap","base"],field_types=["i32","i32","ptr"])
+        self.StructDefinitions["Vec"]=IRStruct(identifier="Vec",field_names=["length","cap","base"],field_types=["i32","i32","& T"])
         self.StructDefinitions["Internal.Unit"]=IRStruct(identifier="Internal.Unit",field_names=[],field_types=[])
         #Box<T> is special ptr
 
-        self.global_scope=IRScope(vars={},parent=global_scope)
+        self.global_scope=IRScope(vars={},parent=None)
         for name in self.checker.FunctionDefinitions:
             self.global_scope.register(name,Variable(mut=False,mut_blocked=False,left=False,type=f'#{name}',name=name))
         for name in self.checker.ConstValues:
@@ -1066,8 +1066,12 @@ class Builder:
 
         for structName in self.checker.StructOrder:
             struct=self.checker.StructDefinitions[structName]
-            self.StructDefinitions[structName]=IRStruct(identifier=structName,field_names=[field_name for field_name in struct.fields],field_types=[self.GetIRType(struct.fields[field_name]) for field_name in struct.fields])
+            self.StructDefinitions[structName]=IRStruct(identifier=structName,field_names=[field_name for field_name in struct.fields],field_types=[self.GetIRType(struct.fields[field_name].type) for field_name in struct.fields])
         
+        for name in ['print_i32','println_i32','get_i32']:
+            self.FunctionNewNames[name]=name
+            self.FunctionDefinitions[name]=IRFunction(identifier=name,retType='i32' if name=="get_i32" else "()",param_names=['%param1'] if name=='get_i32' else [],param_types=['i32'] if name=='get_i32' else [],block=None,scope=None,body=None)
+            
         for functionName in self.checker.FunctionDefinitions:
             if functionName in ['print_i32','println_i32','get_i32']:
                 continue
@@ -1096,9 +1100,11 @@ class Builder:
                 param_types.append(self.GetIRType(func.params[i].type))
                 function_scope.register(func.paramNames[i],IRType(identifier=varname,type=self.GetIRType(func.params[i].type)))
                 self.block+=self.BuildAndStore(varname,f"%param{paramctr}",param_types[-1])
-            self.FunctionDefinitions[newFuncName]=IRFunction(identifier=functionName,retType=func.returnType.type,param_names=param_names,param_types=param_types,block=self.block,scope=function_scope,body=func.body)
+            self.FunctionDefinitions[newFuncName]=IRFunction(identifier=functionName,retType=func.returnType.type if func.returnType else "()",param_names=param_names,param_types=param_types,block=self.block,scope=function_scope,body=func.body)
 
         for newFuncName in self.FunctionDefinitions:
+            if newFuncName in ['print_i32','println_i32','get_i32']:
+                continue
             self.tempctr=self.varctr=self.blockctr=0
             self.block="" 
             func=self.FunctionDefinitions[newFuncName]
@@ -1110,12 +1116,14 @@ class Builder:
             f.write('declare void @print_i32(i32)\ndeclare void @println_i32(i32)\ndeclare i32 @get_i32()\n')
             #output StructDefinitions
             for structName in self.StructDefinitions:
-                description=", ".join([field_type] for field_type in self.StructDefinitions[structName].field_types)
+                description=", ".join([self.GetAllocType(field_type) for field_type in self.StructDefinitions[structName].field_types])
                 f.write(f"%{structName} = type{{ {description} }}\n\n")
             for functionName in self.FunctionDefinitions:
+                if functionName in ['print_i32','println_i32','get_i32']:
+                    continue
                 func=self.FunctionDefinitions[functionName]
-                params=", ".join([func.param_types[i]+" "+func.param_names[i]] for i in range(len(func.param_names)))
-                f.write(f"define {func.retType} @{functionName}({params})")
+                params=", ".join([self.GetAllocType(func.param_types[i])+" "+func.param_names[i] for i in range(len(func.param_names))])
+                f.write(f"define {self.GetAllocType(func.retType)} @{functionName}({params})")
                 f.write("{\n")
                 f.write(func.block)
                 f.write("}\n\n")
