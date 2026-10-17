@@ -813,8 +813,8 @@ class Checker:
                             expression.loop="^"#for IR
                             return Type(mut=False,mut_blocked=False,left=False,type="^")
                         else:
-                            expression.loop=loopContext.retType#for IR
-                            return Type(mut=False,mut_blocked=False,left=False,type=expected if expected else loopContext.retType)
+                            expression.loop=expected if expected else loopContext.retType#for IR
+                            return Type(mut=False,mut_blocked=False,left=False,type=expression.loop)
             else:
                 return self.ParseExpression(scope,expression.blockExpression,expected=expected,impl=impl,inloop=inloop)
 
@@ -910,11 +910,14 @@ class Checker:
         elif isinstance(expression,ast_nodes.LiteralExpression):
             if expected:
                 if (expression.type and self.CanTransform(expression.type,expected)) or (not expression.type and expected in self.integers):
+                    expression.type=expected
                     return Type(mut=False,mut_blocked=False,left=False,type=expected)
                 else:
                     raise SemanticError(f"expression type error! {expected} != {expression.type}")
             else:
-                return Type(mut=False,mut_blocked=False,left=False,type=expression.type if expression.type else 'i32')
+                if not expression.type:
+                    expression.type='i32'
+                return Type(mut=False,mut_blocked=False,left=False,type=expression.type)
 
 
                 
