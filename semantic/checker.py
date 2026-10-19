@@ -709,7 +709,7 @@ class Checker:
                         if len(typePathSegments)==2:#impl
                             if typePathSegments[0].identifier=="Self":
                                 if impl:
-                                    typePathSegments[0].identifier==impl
+                                    typePathSegments[0].identifier=impl
                                 else:
                                     raise SemanticError(f"invalid use of Self!")
                             name=typePathSegments[0].identifier+"::"+name

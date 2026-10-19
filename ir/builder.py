@@ -1113,7 +1113,7 @@ class Builder:
         for name in self.checker.FunctionDefinitions:
             self.global_scope.register(name,Variable(mut=False,mut_blocked=False,left=False,type=f'#{name}',name=name))
         for name in self.checker.ConstValues:
-            self.global_scope.register(name,IRType(type=self.checker.ConstValues[name].type,identifier=str(int(self.ConstValues[name].value))))
+            self.global_scope.register(name,IRType(type=self.checker.ConstValues[name].type,identifier=str(int(self.checker.ConstValues[name].value))))
 
         for structName in self.checker.StructOrder:
             struct=self.checker.StructDefinitions[structName]
