@@ -25,6 +25,7 @@ impl Counter {
         self
     }
 }
+fn f()->i32 { return 7; }
 fn main() {
     let mut c = Counter::new();
     c.add(4);
