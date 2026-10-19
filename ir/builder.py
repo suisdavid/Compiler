@@ -526,9 +526,9 @@ class Builder:
             s=f'''  {temp} = alloca %Vec
                 {ptr} = call ptr @__rx_alloc(i32 {alloc_size*2}, i32 4)
                 {length_ptr} = getelementptr %Vec, ptr {temp}, i32 0, i32 0
-                store ptr {length_ptr}, i32 0
+                store i32 0, ptr {length_ptr}
                 {cap_ptr} = getelementptr %Vec, ptr {temp}, i32 0, i32 1
-                store ptr {cap_ptr}, i32 2
+                store i32 2, ptr {cap_ptr}
                 {pointer} = getelementptr %Vec, ptr {temp}, i32 0, i32 2
                 store ptr {ptr}, ptr {pointer}
                 {res} = load %Vec, ptr {temp}\n'''
@@ -1181,7 +1181,7 @@ class Builder:
         self.FunctionDefinitions['main']=IRFunction(identifier=name,retType='i32',param_names=[],param_types=[],block='    call %Internal.Unit @rx_source_main()\n   ret i32 0\n',scope=None,body=None)
         #output
         with open(self.output,"w") as f:
-            f.write('declare void @print_i32(i32)\ndeclare void @println_i32(i32)\ndeclare i32 @get_i32()\n\n')
+            f.write('target triple = "riscv32-unknown-unknown-elf"\n\ndeclare void @print_i32(i32)\ndeclare void @println_i32(i32)\ndeclare i32 @get_i32()\ndeclare ptr @__rx_alloc(i32, i32)\n\n')
             #output StructDefinitions
             for structName in self.StructDefinitions:
                 description=", ".join([self.GetAllocType(field_type) for field_type in self.StructDefinitions[structName].field_types])

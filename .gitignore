@@ -17,3 +17,5 @@ dev/
 *.rx
 *.bc
 *.ll
+*.s
+*.profile

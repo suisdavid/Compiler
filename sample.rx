@@ -21,9 +21,9 @@ fn make(x: i32) -> Packet {
         flag: true,
     }
 }
-fn f(a: &i32, b: &i32) -> i32 {
+fn f(a: i32, b: i32) -> i32 {
     a + b
 }
 fn main() {
-    println_i32(1);
+    println_i32(f(1,2));
 }

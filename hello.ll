@@ -1,6 +1,9 @@
+target triple = "riscv32-unknown-unknown-elf"
+
 declare void @print_i32(i32)
 declare void @println_i32(i32)
 declare i32 @get_i32()
+declare ptr @__rx_alloc(i32, i32)
 
 %Vec = type{ i32, i32, ptr }
 
@@ -68,27 +71,28 @@ block2:
     
 }
 
-define i32 @func3(ptr %param1, ptr %param2){
+define i32 @func3(i32 %param1, i32 %param2){
 entry:
-    %prm1 = alloca ptr
-    store ptr %param1, ptr %prm1
-    %prm2 = alloca ptr
-    store ptr %param2, ptr %prm2
-    %temp1 = load ptr, ptr %prm1
-    %temp2 = load ptr, ptr %prm2
-    %temp4 = load i32, ptr %temp1
-    %temp6 = load i32, ptr %temp2
-    %temp3 = add i32 %temp4, %temp6
+    %prm1 = alloca i32
+    store i32 %param1, ptr %prm1
+    %prm2 = alloca i32
+    store i32 %param2, ptr %prm2
+    %temp1 = load i32, ptr %prm1
+    %temp2 = load i32, ptr %prm2
+    %temp3 = add i32 %temp1, %temp2
     ret i32 %temp3
     
 }
 
 define %Internal.Unit @rx_source_main(){
 entry:
-    call void @println_i32(i32 1)
-    %temp1 = freeze %Internal.Unit zeroinitializer
-    %temp2 = freeze %Internal.Unit zeroinitializer
-    ret %Internal.Unit %temp2
+    %temp2 = alloca i32
+    %temp1 =  call i32 @func3(i32 1, i32 2)
+    store i32 %temp1, ptr %temp2
+    call void @println_i32(i32 %temp1)
+    %temp3 = freeze %Internal.Unit zeroinitializer
+    %temp4 = freeze %Internal.Unit zeroinitializer
+    ret %Internal.Unit %temp4
     
 }
 
