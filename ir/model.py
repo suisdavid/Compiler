@@ -12,30 +12,9 @@ class IRType:
 @dataclass
 class IRStruct:#basic struct names or vec
     identifier: str
+    size: int
     field_names: list[str]
     field_types: list[str]
-
-@dataclass
-class IRVec(IRStruct):
-    T: str
-    #field: length(i32), cap(i32),base(ptr)
-    def push(self,x:IRType):
-        pass
-
-    def remove(self,idx:int)->IRType:
-        pass
-
-    def len(self):
-        pass
-
-    def is_empty(self):
-        pass
-
-@dataclass
-class IRBlock:
-    identifier:str #block name
-    statements:str #statements in block
-
 
 @dataclass
 class IRScope:

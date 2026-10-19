@@ -28,12 +28,12 @@ class Builder:
     def beautify(self,s:str)->str:
         lines=s.split('\n')
         t=''
-        for line in lines:
-            line=line.strip()
-            if line.endswith(":"):
-                t+=(f'    br label %{line[:-1]}\n' if not line.startswith('entry') else '')+line+'\n'
+        for i in range(len(lines)):
+            lines[i]=lines[i].strip()
+            if lines[i].endswith(":"):
+                t+=(f'    br label %{lines[i][:-1]}\n' if (not lines[i].startswith('entry') and not lines[i-1].startswith('br')) else '')+lines[i]+'\n'
             else:
-                t+='    '+line+'\n'
+                t+='    '+lines[i]+'\n'
         return t
     
     def GenTempName(self)->str:#generate a temporary variable
@@ -62,6 +62,25 @@ class Builder:
         self.block+=f"    {res} = freeze %Internal.Unit zeroinitializer\n"
         return IRType(type="()",identifier=res)
     
+    def GetAllocSize(self,type:str)->int:
+        if type.startswith("&") or type.startswith("Box<"):
+            return 4
+        elif type.startswith("Vec<"):
+            return 12
+        elif type=="()":
+            return 0
+        elif type in ["i32","u32","isize","usize"]:
+            return 4
+        elif type=="bool":
+            return 1
+        elif type=='^':
+            return 0
+        elif type.startswith("["):
+            innerType,length=self.GetArrayInfo(type)
+            return length*self.GetAllocSize(innerType)
+        else:
+            return self.StructDefinitions[type].size
+        
     def GetAllocType(self,type:str)->str:
         if type.startswith("&") or type.startswith("Box<"):
             return "ptr"
@@ -203,12 +222,12 @@ class Builder:
                 temp=self.GenTempName()
                 self.AutoDereference(type1)
                 self.block+=f"    {temp} = sub i32 0, {type1.identifier}\n"
-                return IRType(type=type1.identifier,identifier=temp),block_name
+                return IRType(type=type1.type,identifier=temp),block_name
             elif op=='!':
                 temp=self.GenTempName()
                 self.AutoDereference(type1)
-                self.block+=(f"    {temp} = xor i1 {type1.identifier}, true\n") if type=="bool" else (f"    {temp} = xor i32 {type1.identifier}, -1\n")
-                return IRType(type=type1.identifier,identifier=temp),block_name
+                self.block+=(f"    {temp} = xor i1 {type1.identifier}, true\n") if type1.type=="bool" else (f"    {temp} = xor i32 {type1.identifier}, -1\n")
+                return IRType(type=type1.type,identifier=temp),block_name
             elif op=="star":
                 s,temp=self.Dereference(type1)
                 self.block+=s
@@ -258,9 +277,9 @@ class Builder:
                 store i1 true, ptr {temp}
             {loop_block}:
                 {temp1} = load i32, ptr {ctr}
-                {s1} = getelementptr [{length} x {alloc_type}] ptr {type1.left}, i32 0, i32 {temp1}
+                {s1} = getelementptr [{length} x {alloc_type}], ptr {type1.left}, i32 0, i32 {temp1}
                 {t1} = load {alloc_type}, ptr {s1}
-                {s2} = getelementptr [{length} x {alloc_type}] ptr {type2.left}, i32 0, i32 {temp1}
+                {s2} = getelementptr [{length} x {alloc_type}], ptr {type2.left}, i32 0, i32 {temp1}
                 {t2} = load {alloc_type}, ptr {s2}\n'''
             news,_=self.Equal(IRType(type=innerType,identifier=t1,left=s1),IRType(type=innerType,identifier=t2,left=s2),val,block_name)
             s+=news 
@@ -351,9 +370,9 @@ class Builder:
                 val=self.GenTempName()
 
                 alloc_type=self.GetAllocType(struct.field_types[i])
-                s+=f'''    {s1} = getelementptr %{struct.identifier} {type1.left}, i32 0, i32 {i}
+                s+=f'''    {s1} = getelementptr %{struct.identifier}, ptr {type1.left}, i32 0, i32 {i}
                     {t1} = load {alloc_type}, ptr {s1}
-                    {s2} = getelementptr %{struct.identifier} {type2.left}, i32 0, i32 {i}
+                    {s2} = getelementptr %{struct.identifier}, ptr {type2.left}, i32 0, i32 {i}
                     {t2} = load {alloc_type}, ptr {s2}\n'''
                 news,block_name=self.Equal(IRType(type=struct.field_types[i],identifier=t1,left=s1),IRType(type=struct.field_types[i],identifier=t2,left=s2),val,block_name)
                 if i==length-1:
@@ -379,8 +398,9 @@ class Builder:
             dest=self.GenTempName()
             src=self.GenTempName()
             alloc_type=self.GetAllocType(innerType)
-            s=f'''{src} = load {self.GetAllocType(innerType)}, ptr {type.identifier}
-                {dest} = alloca {alloc_type}\n'''
+            alloc_size=self.GetAllocSize(innerType)
+            s=f'''{src} = load {alloc_type}, ptr {type.identifier}
+                {dest} = call ptr @__rx_alloc(i32 {alloc_size}, i32 4)\n'''
             news,block_name=self.Clone(IRType(type=innerType,identifier=src,left=type.identifier),dest,block_name)
             return s+news+f"    store ptr {dest}, ptr {res}\n",block_name
         elif type.type.startswith("["):
@@ -398,7 +418,7 @@ class Builder:
                 store i32 0, ptr {ctr}
             {loop_block}:
                 {temp1} = load i32, ptr {ctr}
-                {source} = getelementptr [{length} x {alloc_type}] ptr {type.left}, i32 0, i32 {temp1}
+                {source} = getelementptr [{length} x {alloc_type}], ptr {type.left}, i32 0, i32 {temp1}
                 {src} = load {alloc_type}, ptr {source}
                 {dest} = getelementptr [{length} x {alloc_type}], ptr {res}, i32 0, i32 {temp1}\n'''    
             news,_=self.Clone(IRType(type=innerType,identifier=src,left=source),dest,block_name)
@@ -424,6 +444,7 @@ class Builder:
             cap=self.GenTempName()
             cap_ptr=self.GenTempName()
             pointer=self.GenTempName()
+            size=self.GenTempName()
             new_res=self.GenTempName()
             source=self.GenTempName()
             condition=self.GenTempName()
@@ -433,6 +454,7 @@ class Builder:
             new_block=self.GenBlockName()
             ctr=self.GenTempName()
             alloc_type=self.GetAllocType(innerType)
+            alloc_size=self.GetAllocSize(innerType)
             s+=f'''
                 {length} = extractvalue %Vec {type.identifier}, 0
                 {cap} = extractvalue %Vec {type.identifier}, 1
@@ -442,7 +464,8 @@ class Builder:
                 store i32 {length}, ptr {length_ptr}
                 store i32 {cap}, ptr {cap_ptr}
                 {temp} = getelementptr %Vec, ptr {res}, i32 0, i32 2
-                {new_res} = alloca {alloc_type}, i32 {cap}
+                {size} = mul i32 {cap}, {alloc_size}
+                {new_res} = call ptr @__rx_alloc(i32 {size}, i32 4)
                 store ptr {new_res}, ptr {temp}
                 {ctr} = alloca i32
                 store i32 0, ptr {ctr}
@@ -494,11 +517,20 @@ class Builder:
             return s,IRType(type="bool",identifier=temp),block_name
         elif func_name=="new":
             alloc_type=self.GetAllocType(innerType)
+            alloc_size=self.GetAllocSize(innerType)
             res=self.GenTempName()
             ptr=self.GenTempName()
+            length_ptr=self.GenTempName()
+            cap_ptr=self.GenTempName()
+            pointer=self.GenTempName()
             s=f'''  {temp} = alloca %Vec
-                {ptr} = alloca [2 x {alloc_type}]
-                store %Vec {{ i32 0, i32 2, ptr {ptr} }}, ptr {temp}
+                {ptr} = call ptr @__rx_alloc(i32 {alloc_size*2}, i32 4)
+                {length_ptr} = getelementptr %Vec, ptr {temp}, i32 0, i32 0
+                store ptr {length_ptr}, i32 0
+                {cap_ptr} = getelementptr %Vec, ptr {temp}, i32 0, i32 1
+                store ptr {cap_ptr}, i32 2
+                {pointer} = getelementptr %Vec, ptr {temp}, i32 0, i32 2
+                store ptr {ptr}, ptr {pointer}
                 {res} = load %Vec, ptr {temp}\n'''
             return s,IRType(type=f"Vec<{innerType}>",identifier=res,left=temp),block_name
         elif func_name=="push":
@@ -507,6 +539,7 @@ class Builder:
             pointer_ptr=self.GenTempName()
             length=self.GenTempName()
             cap=self.GenTempName()
+            size=self.GenTempName()
             pointer=self.GenTempName()
 
             if_full=self.GenTempName()
@@ -515,6 +548,7 @@ class Builder:
             new_length=self.GenTempName()
 
             ctr=self.GenTempName()
+            temp=self.GenTempName()
             temp1=self.GenTempName()
             temp2=self.GenTempName()
             source=self.GenTempName()
@@ -523,6 +557,7 @@ class Builder:
             condition=self.GenTempName()
 
             alloc_type=self.GetAllocType(innerType)
+            alloc_size=self.GetAllocSize(innerType)
             if_block=self.GenBlockName()
             else_block=self.GenBlockName()
             loop_block=self.GenBlockName()
@@ -538,7 +573,8 @@ class Builder:
                 br i1 {if_full}, label %{if_block}, label %{else_block}
             {if_block}:
                 {cap2} =  add i32 {cap}, {cap}
-                {new_pointer} = alloca {alloc_type}, i32 {cap2}
+                {size} = mul i32 {cap2}, {alloc_size}
+                {new_pointer} = call ptr @__rx_alloc(i32 {size}, i32 4)
                 store ptr {new_pointer}, ptr {pointer_ptr}
                 store i32 {cap2}, ptr {cap_ptr}
                 {ctr} = alloca i32
@@ -567,6 +603,7 @@ class Builder:
             length_ptr=self.GenTempName()
             pointer_ptr=self.GenTempName()
             ans_ptr=self.GenTempName()
+            left=self.GenTempName()
             length=self.GenTempName()
             new_length=self.GenTempName()
             pointer=self.GenTempName()
@@ -593,7 +630,7 @@ class Builder:
                 store i32 {new_length}, ptr {length_ptr}
                 {pointer_ptr} = getelementptr %Vec, ptr {args[0].identifier}, i32 0, i32 2   
                 {pointer} = load ptr, ptr {pointer_ptr}
-                {ans_ptr} = getelementptr {alloc_type}, ptr {pointer}, i32 {args[0].identifier}
+                {ans_ptr} = getelementptr {alloc_type}, ptr {pointer}, i32 {args[-1].identifier}
                 {ans} = load {alloc_type}, ptr {ans_ptr}
                 {cond} = icmp eq i32 {new_length}, {args[-1].identifier}
                 br i1 {cond}, label %{new_block}, label %{prep_block}
@@ -610,8 +647,10 @@ class Builder:
             s+=self.Move(IRType(type=innerType,identifier=src),dest)
             s+=f'''    {condition} = icmp eq i32 {idx_1}, {new_length}
                 br i1 {condition}, label %{new_block}, label %{loop_block}
-            {new_block}:\n'''
-            return s,IRType(type=innerType,identifier=ans,left=ans_ptr),new_block
+            {new_block}:\n
+                {left} = alloca {alloc_type}
+                store {alloc_type} {ans}, ptr {left}\n'''
+            return s,IRType(type=innerType,identifier=ans,left=left),new_block
         else:#clone
             res=self.GenTempName()
             val=self.GenTempName()
@@ -627,8 +666,9 @@ class Builder:
             res=self.GenTempName()
             val=self.GenTempName()
             alloc_type=self.GetAllocType(innerType)
+            alloc_size=self.GetAllocSize(innerType)
             s=f'''  {res} = alloca ptr
-                {val} = alloca {alloc_type}
+                {val} = call ptr @__rx_alloc(i32 {alloc_size}, i32 4)
                 store {alloc_type} {arg.identifier}, ptr {val}
                 store ptr {val}, ptr {res}\n'''
             return s,IRType(type=f"Box<{innerType}>",identifier=val,left=res),block_name
@@ -859,7 +899,7 @@ class Builder:
                     self.block+=f'    {ptr} = alloca %{struct.identifier}\n'
                     for i in range(len(args)):
                         src=self.GenTempName()
-                        self.block+=f'{src} = getelementptr %{struct.identifier} {ptr}, i32 0, i32 {i}\n    store {self.GetAllocType(args[i].type)} {args[i].identifier}, ptr {src}\n'
+                        self.block+=f'{src} = getelementptr %{struct.identifier}, ptr {ptr}, i32 0, i32 {i}\n    store {self.GetAllocType(args[i].type)} {args[i].identifier}, ptr {src}\n'
                     self.block+=f'    {temp} = load %{struct.identifier}, ptr {ptr}\n'
                     return IRType(type=struct.identifier,identifier=temp,left=ptr),block_name
             
@@ -1001,7 +1041,7 @@ class Builder:
             for i in range(len(args)):
                 self.AutoDereference(args[i],innerType)
                 src=self.GenTempName()
-                self.block+=f'  {src} = getelementptr [{length} x {alloc_type}] {res}, i32 0, i32 {i}\n    store {alloc_type} {args[i].identifier}, ptr {src}\n'
+                self.block+=f'  {src} = getelementptr [{length} x {alloc_type}], ptr {res}, i32 0, i32 {i}\n    store {alloc_type} {args[i].identifier}, ptr {src}\n'
             self.block+=f'    {val} = load [{length} x {alloc_type}], ptr {res}\n'
             return IRType(type=f'[{self.GetIRType(expression.type)};{length}]',identifier=val,left=res),block_name
 
@@ -1065,8 +1105,8 @@ class Builder:
 
 
     def Build(self):
-        self.StructDefinitions["Vec"]=IRStruct(identifier="Vec",field_names=["length","cap","base"],field_types=["i32","i32","& T"])
-        self.StructDefinitions["Internal.Unit"]=IRStruct(identifier="Internal.Unit",field_names=[],field_types=[])
+        self.StructDefinitions["Vec"]=IRStruct(identifier="Vec",field_names=["length","cap","base"],field_types=["i32","i32","& T"],size=12)
+        self.StructDefinitions["Internal.Unit"]=IRStruct(identifier="Internal.Unit",field_names=[],field_types=[],size=0)
         #Box<T> is special ptr
 
         self.global_scope=IRScope(vars={},parent=None)
@@ -1077,7 +1117,21 @@ class Builder:
 
         for structName in self.checker.StructOrder:
             struct=self.checker.StructDefinitions[structName]
-            self.StructDefinitions[structName]=IRStruct(identifier=structName,field_names=[field_name for field_name in struct.fields],field_types=[self.GetIRType(struct.fields[field_name].type) for field_name in struct.fields])
+            field_names=[]
+            field_types=[]
+            self.StructDefinitions[structName]=IRStruct(identifier=structName,field_names=[field_name for field_name in struct.fields],field_types=[self.GetIRType(struct.fields[field_name].type) for field_name in struct.fields],size=0)
+            size=0
+            for field_name in struct.fields:
+                field_names.append(field_name)
+                field_types.append(self.GetIRType(struct.fields[field_name].type))
+                delta=self.GetAllocSize(field_types[-1])
+                if delta!=1 and size%4!=0:
+                    size+=4-size%4
+                size+=delta
+            if size%4!=0:
+                size+=4-size%4
+            self.StructDefinitions[structName]=IRStruct(identifier=structName,field_names=field_names,field_types=field_types,size=size)
+                        
         
         for name in ['print_i32','println_i32','get_i32']:
             self.FunctionNewNames[name]=name
