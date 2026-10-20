@@ -19,3 +19,4 @@ dev/
 *.ll
 *.s
 *.profile
+!runtime.s
