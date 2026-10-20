@@ -801,7 +801,7 @@ class Checker:
                         raise SemanticError(f"expression type error! () != {expected}")
                     return Type(mut=False,mut_blocked=False,left=False,type=expected if expected else "()")
                 else:#loop
-                    loopContext=LoopContext(loop="loop",has_break=False,expectedType=expected,has_never=True,retType="")
+                    loopContext=LoopContext(loop="loop",has_break=False,expectedType=expected,has_never=False,retType="")
                     self.ParseExpression(scope,expression.blockExpression,expected="()",impl=impl,inloop=loopContext)
                     if not loopContext.has_break:
                         inloop.has_never=True
