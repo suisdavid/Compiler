@@ -1,6 +1,4 @@
 PYTHON := $(CURDIR)/.venv/bin/python3
-
-CLANG ?= clang-22
 # 测试开始前，将公共运行时编译为汇编。
 BUILD = cp "$(CURDIR)/runtime.s" {runtime}
 
