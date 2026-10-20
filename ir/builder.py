@@ -27,7 +27,7 @@ class Builder:
         self.funcctr=0
         self.blockctr=0
         self.block=""
-    def beautify(self,s:str)->str:
+    def prune(self,s:str)->str:
         lines=s.split('\n')
         t=''
         flag=0
@@ -1236,9 +1236,9 @@ class Builder:
                 description=", ".join([self.GetAllocType(field_type) for field_type in self.StructDefinitions[structName].field_types])
                 f.write(f"%{structName} = type{{ {description} }}\n\n")
             for each in self.CloneFunctions:
-                f.write(self.beautify(each)+'\n')
+                f.write(self.prune(each)+'\n')
             for each in self.EqualFunctions:
-                f.write(self.beautify(each)+'\n')
+                f.write(self.prune(each)+'\n')
             for functionName in self.FunctionDefinitions:
                 if functionName in ['print_i32','println_i32','get_i32']:
                     continue
@@ -1246,7 +1246,7 @@ class Builder:
                 params=", ".join([self.GetAllocType(func.param_types[i])+" "+func.param_names[i] for i in range(len(func.param_names))])
                 f.write(f"define {self.GetAllocType(func.retType)} @{functionName}({params})")
                 f.write("{\n")
-                f.write(self.beautify(func.block))
+                f.write(self.prune(func.block))
                 f.write("}\n\n")
 
 

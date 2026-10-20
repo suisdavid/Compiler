@@ -1,8 +1,6 @@
 PYTHON := $(CURDIR)/.venv/bin/python3
 
-LLVM_PREFIX := $(shell brew --prefix llvm@22)
-CLANG := $(LLVM_PREFIX)/bin/clang
-
+CLANG ?= clang-22
 # 测试开始前，将公共运行时编译为汇编。
 BUILD = "$(CLANG)" \
     --target=riscv32-unknown-none-elf -march=rv32im -mabi=ilp32 \
