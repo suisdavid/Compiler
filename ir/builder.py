@@ -1113,7 +1113,7 @@ class Builder:
                 size+=4-size%4
             self.StructDefinitions[structName]=IRStruct(identifier=structName,field_names=field_names,field_types=field_types,size=size)
             
-            
+            self.blockctr=self.tempctr=self.varctr=0
             functionName=f"Equal{structName}"
             length=len(field_names)
             temp=self.GenTempName()
@@ -1152,6 +1152,7 @@ class Builder:
             s+=f'''{win_block}:\n   {res} = load i1, ptr {temp}\n   ret i1 {res}\n}}\n'''
             self.EqualFunctions.append(s)
 
+            self.blockctr=self.tempctr=self.varctr=0
             functionName=f"Clone{structName}"
             origin=self.GenTempName()
             res=self.GenTempName()

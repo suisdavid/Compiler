@@ -28,21 +28,9 @@ class Box(Object):#Box<T>, supports new
 @dataclass
 class Vec(Object):#Vec<T>, supports new,len,is_empty,push,remove
     elements:list[Object]
-    def len(self):
-        return len(self.elements)
-    def is_empty(self):
-        return len(self.elements)==0
-    def push(self,value: Object):
-        if value.type!=self.type: #can be determined in compilation
-            raise SemanticError(f"wrong type! {value.type} != {self.type[4:-1]}")
-        self.elements.append(value)
-    def remove(self,index:int):#check index in runtime
-        return self.elements().pop(index)
-        
 
 @dataclass
 class Reference(Object):# &T
-    addr: str #the name of the variable it points to.
     mut:bool #whether mutable reference
 
 @dataclass

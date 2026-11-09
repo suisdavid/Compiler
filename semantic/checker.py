@@ -153,7 +153,7 @@ class Checker:
                     raise SemanticError(f"{segment.identifier} not defined!")
         elif isinstance(typeref,ast_nodes.ReferenceType):
             T=self.ParseTypeRef(typeref.inner,impl=impl,typeonly=True)
-            return Reference(mut=typeref.mut,type='&'+('mut ' if typeref.mut else ' ')+T.type,addr=None)
+            return Reference(mut=typeref.mut,type='&'+('mut ' if typeref.mut else ' ')+T.type)
         elif isinstance(typeref,ast_nodes.ArrayType):
             T=self.ParseTypeRef(typeref.inner,impl=impl,typeonly=typeonly)
             length=self.ParseConst(typeref.length,mustbe='usize',impl=impl)
