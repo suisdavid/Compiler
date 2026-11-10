@@ -3,13 +3,13 @@ PYTHON := $(CURDIR)/.venv/bin/python3
 BUILD = cp "$(CURDIR)/runtime.s" {runtime}
 
 # 只进行语义检查。
-SEMANTIC = "$(PYTHON)" main.py {source}
+SEMANTIC = "$(PYTHON)" main.py --stage semantic {source}
 
 # 生成测试器指定位置的 LLVM IR。
-IR = "$(PYTHON)" main.py {source} {output}
+IR = "$(PYTHON)" main.py --stage ir {source} {output}
 
 # 尚未实现直接输出汇编，可以暂时留空。
-CODEGEN =
+CODEGEN = "$(PYTHON)" main.py --stage codegen {source} {output}
 
 # 测试器传给 RUN 的 {output} 已经是汇编文件。
 RUN = xmake run -P "$(CURDIR)/vendor/REIMU" -w "$(CURDIR)" reimu \

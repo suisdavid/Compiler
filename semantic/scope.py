@@ -34,11 +34,10 @@ class Reference(Object):# &T
     mut:bool #whether mutable reference
 
 @dataclass
-class Type:
+class Type(Object):
     mut:bool
     mut_blocked:bool #used for reference
     left:bool #whether left value
-    type:str #function starts with #
 
 @dataclass
 class Variable(Type):#every variable（including function) has a name!

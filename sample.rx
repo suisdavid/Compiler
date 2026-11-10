@@ -1,34 +1,35 @@
 use rx::core::*;
 
-#[derive(Clone, PartialEq, Eq)]
-struct Inner {
-    value: i32,
+#[derive(Clone, Copy)]
+struct S {
+    small: bool,
+    x: i32,
+    tail: bool,
+    y: [i32; 2],
 }
-impl Inner {
-    fn clone(&self) -> i32 {
-        self.value + 100
-    }
+fn mark(x: i32) -> i32 {
+    println_i32(x);
+    x
 }
-#[derive(Clone, PartialEq, Eq)]
-struct Outer {
-    inner: Inner,
-    items: [i32; 3],
+fn change(mut s: S) -> S {
+    s.x = 99;
+    s.y[1] = 77;
+    s
 }
 fn main() {
-    let a = Outer {
-        inner: Inner { value: 7 },
-        items: [1, 2, 3],
+    let s = S {
+        y: [mark(1), mark(2)],
+        tail: true,
+        x: mark(3),
+        small: false,
     };
-    let b = Outer::clone(&a);
-    println_i32((a == b) as i32);
-    println_i32(Inner::clone(&a.inner));
-    println_i32(b.inner.value);
-    let mut x = 9;
-    let mut y = 9;
-    let p = &mut x;
-    let q = &mut y;
-    println_i32((p == q) as i32);
-    *p = 11;
-    println_i32((p != q) as i32);
-    println_i32(*q);
+    let mut t = change(s);
+    println_i32(s.x);
+    println_i32(s.y[1]);
+    println_i32(t.x);
+    println_i32(t.y[1]);
+    t = s;
+    println_i32(t.x);
+    println_i32(t.tail as i32);
+    println_i32(t.small as i32);
 }

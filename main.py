@@ -8,6 +8,8 @@ from semantic.errors import SemanticError
 from pprint import pprint
 from antlr4.error.ErrorListener import ErrorListener
 from ir.builder import Builder
+from codegen.generator import Generator
+from codegen.model import *
 
 class Listener(ErrorListener):
    def syntaxError(self):
@@ -29,16 +31,20 @@ def parse_file(file_name):
     return tree
 
 def ast_build(file_name):
-    tree=parse_file(sys.argv[1])
+    tree=parse_file(file_name)
     visitor=ParserVisitor()
     return visitor.visitCrate(tree)
 
-if __name__=="__main__":
-    if len(sys.argv)<2:
+if __name__=="__main__":#python3 main.py --stage <stage> <input_file> <output_file>
+    if len(sys.argv)<4:
         print("no file path provided!")
-        sys.exit(0)
+        sys.exit(1)
+    if sys.argv[1]!='--stage':
+        print("unrecognized format")
+        sys.exit(1)
+    stage=sys.argv[2]
     try:
-        crate=ast_build(sys.argv[1])
+        crate=ast_build(sys.argv[3])
     except Exception as e:
         print("Parse Error!")
         sys.exit(1)
@@ -48,10 +54,17 @@ if __name__=="__main__":
     except SemanticError as e:
         print(e.errormessage)
         sys.exit(1)
-    if len(sys.argv)<3:
-        print("no output file path provided!")
+    if stage=="semantic":
         sys.exit(0)
-    builder=Builder(checker,sys.argv[2])
-    builder.Build()
+    if len(sys.argv)<5:
+        print("no output file path provided!")
+        sys.exit(1)
+    builder=Builder(checker,sys.argv[4])
+    functionDescriptions=builder.Build()
+    if stage=="ir":
+        sys.exit(0)
+    generator=Generator(functionDescriptions,sys.argv[4])
+    generator.Generate()
+
 
     
