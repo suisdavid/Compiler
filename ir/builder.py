@@ -30,6 +30,8 @@ class Builder:
         self.blockctr=0
         self.block=""
         self.retval=[]# return a list of FunctionDescriptions
+        self.phiMap={}#str->str
+
     def prune(self,s:str)->str:
         lines=s.split('\n')
         t=''
@@ -332,7 +334,7 @@ class Builder:
                 {res} = load i1, ptr {temp}\n'''     
             return s,win_block
         else:#struct
-            s=f'    {res} = call i1 @Equal{type1.type}(ptr {type1.left}, ptr {type2.left})\n'
+            s=f'    {res} = call i1 @Equal{type1.type}( ptr {type1.left}, ptr {type2.left} )\n'
             return s,block_name
 
         
@@ -349,7 +351,7 @@ class Builder:
             alloc_type=util.GetAllocType(innerType)
             alloc_size=util.GetAllocSize(innerType)
             s=f'''{src} = load {alloc_type}, ptr {type.identifier}
-                {dest} = call ptr @__rx_alloc(i32 {alloc_size}, i32 4)\n'''
+                {dest} = call ptr @__rx_alloc( i32 {alloc_size}, i32 4 )\n'''
             news,block_name=self.Clone(IRType(type=innerType,identifier=src,left=type.identifier),dest,block_name)
             return s+news+f"    store ptr {dest}, ptr {res}\n",block_name
         elif type.type.startswith("["):
@@ -414,7 +416,7 @@ class Builder:
                 store i32 {cap}, ptr {cap_ptr}
                 {temp} = getelementptr %Vec, ptr {res}, i32 0, i32 2
                 {size} = mul i32 {cap}, {alloc_size}
-                {new_res} = call ptr @__rx_alloc(i32 {size}, i32 4)
+                {new_res} = call ptr @__rx_alloc( i32 {size}, i32 4 )
                 store ptr {new_res}, ptr {temp}
                 {ctr} = alloca i32
                 store i32 0, ptr {ctr}
@@ -435,7 +437,7 @@ class Builder:
             return s,new_block
         else:#struct
             temp=self.GenTempName()
-            s=f'    {temp} = call %{type.type} @Clone{type.type}(ptr {type.left})\n  store %{type.type} {temp}, ptr {res}\n'
+            s=f'    {temp} = call %{type.type} @Clone{type.type}( ptr {type.left} )\n  store %{type.type} {temp}, ptr {res}\n'
             return s,block_name
 
     def Move(self,type:IRType,res:str)->str:#move struct to res(ptr,already alloced),return s,block_name
@@ -464,7 +466,7 @@ class Builder:
             cap_ptr=self.GenTempName()
             pointer=self.GenTempName()
             s=f'''  {temp} = alloca %Vec
-                {ptr} = call ptr @__rx_alloc(i32 {alloc_size*2}, i32 4)
+                {ptr} = call ptr @__rx_alloc( i32 {alloc_size*2}, i32 4 )
                 {length_ptr} = getelementptr %Vec, ptr {temp}, i32 0, i32 0
                 store i32 0, ptr {length_ptr}
                 {cap_ptr} = getelementptr %Vec, ptr {temp}, i32 0, i32 1
@@ -514,7 +516,7 @@ class Builder:
             {if_block}:
                 {cap2} =  add i32 {cap}, {cap}
                 {size} = mul i32 {cap2}, {alloc_size}
-                {new_pointer} = call ptr @__rx_alloc(i32 {size}, i32 4)
+                {new_pointer} = call ptr @__rx_alloc( i32 {size}, i32 4 )
                 store ptr {new_pointer}, ptr {pointer_ptr}
                 store i32 {cap2}, ptr {cap_ptr}
                 {ctr} = alloca i32
@@ -608,7 +610,7 @@ class Builder:
             alloc_type=util.GetAllocType(innerType)
             alloc_size=util.GetAllocSize(innerType)
             s=f'''  {res} = alloca ptr
-                {val} = call ptr @__rx_alloc(i32 {alloc_size}, i32 4)
+                {val} = call ptr @__rx_alloc( i32 {alloc_size}, i32 4 )
                 store {alloc_type} {arg.identifier}, ptr {val}
                 store ptr {val}, ptr {res}\n'''
             return s,IRType(type=f"Box<{innerType}>",identifier=val,left=res),block_name
@@ -668,10 +670,10 @@ class Builder:
                 if func.retType!="()":
                     ptr=self.GenTempName()
                     alloc_type=util.GetAllocType(func.retType)
-                    self.block+=f'''    {ptr} = alloca {alloc_type}\n   {temp} =  call {alloc_type} @{newname}({s})\n  store {alloc_type} {temp}, ptr {ptr}\n'''
+                    self.block+=f'''    {ptr} = alloca {alloc_type}\n   {temp} =  call {alloc_type} @{newname}( {s} )\n  store {alloc_type} {temp}, ptr {ptr}\n'''
                     return IRType(type=func.retType,identifier=temp,left=ptr),block_name
                 else:
-                    self.block+=f'''    call void @{newname}({s})
+                    self.block+=f'''    call void @{newname}( {s} )
                         {temp} = freeze %Internal.Unit zeroinitializer\n'''
                     return IRType(type="()",identifier=temp),block_name  
 
@@ -924,6 +926,7 @@ class Builder:
                 then_block=self.GenBlockName()
                 else_block=self.GenBlockName()
                 after_block=self.GenBlockName()
+                temp=self.GenTempName()
                 self.block+=f'  br i1 {type.identifier}, label %{then_block}, label %{else_block}\n{then_block}:\n'
                 type0,new_then_block=self.ParseExpression(scope,expression.thenExpressions[0],then_block,break_name=break_name,continue_name=continue_name)
                 if expression.retType!='^':
@@ -944,6 +947,8 @@ class Builder:
                     left=self.GenTempName()
                     unionType=util.GetAllocType(expression.retType)
                     self.block+=f'  {ret_val} = phi {unionType} [{type0.identifier}, %{new_then_block}], [{type1.identifier}, %{new_else_block}]\n    {left}= alloca {unionType}\n    store {unionType} {ret_val}, ptr {left}\n'
+                    self.phiMap[type0.identifier]=ret_val
+                    self.phiMap[type1.identifier]=ret_val
                     return IRType(type=util.GetIRType(expression.retType),identifier=ret_val,left=left),after_block
             else:
                 then_block=self.GenBlockName()
@@ -1181,6 +1186,7 @@ class Builder:
                 continue
             self.tempctr=self.varctr=self.blockctr=0
             self.block="" 
+            self.phiMap={}
             func=self.FunctionDefinitions[newFuncName]
             type=self.ParseExpression(func.scope,func.body,"entry")[0]
             if type.type!='^':
@@ -1189,8 +1195,10 @@ class Builder:
                 self.block+=f'    unreachable\n'
             func.block+=self.block
             func.block=util.prune(func.block)
+            func.phiMap=self.phiMap
+
         #define main
-        self.FunctionDefinitions['main']=IRFunction(identifier=name,retType='i32',param_names=[],param_types=[],block='    call %Internal.Unit @rx_source_main()\n    ret i32 0\n',scope=None,body=None)
+        self.FunctionDefinitions['main']=IRFunction(identifier=name,retType='i32',param_names=[],param_types=[],block='    call %Internal.Unit @rx_source_main( )\n    ret i32 0\n',scope=None,body=None)
         #output
         with open(self.output,"w") as f:
             f.write('target triple = "riscv32-unknown-unknown-elf"\n\ndeclare void @print_i32(i32)\ndeclare void @println_i32(i32)\ndeclare i32 @get_i32()\ndeclare ptr @__rx_alloc(i32, i32)\n\n')
@@ -1211,7 +1219,7 @@ class Builder:
                 f.write("{\n")
                 f.write(func.block)
                 f.write("}\n\n")
-                self.retval.append(FunctionDescriptions(identifier=func.identifier,param_types=list(map(util.GetAllocType,func.param_types)),param_num=len(func.param_types),block=list(map(lambda s:s.strip(),func.block.split('\n')))))
+                self.retval.append(FunctionDescriptions(identifier=func.identifier,param_types=list(map(util.GetAllocType,func.param_types)),param_num=len(func.param_types),ret_size=util.GetAllocSize(func.retType),block=list(map(lambda s:s.strip(),func.block.split('\n'))),phiMap=func.phiMap))
             return self.retval
 
 

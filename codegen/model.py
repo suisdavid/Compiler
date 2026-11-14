@@ -22,44 +22,44 @@ class Opcode(Enum):
     SRAI: 17
     SLTI: 18
     SLTIU: 19
-    LB: 20
-    LBU: 21
-    LH: 22
-    LHU: 23
     LW: 24
-    SB: 25
-    SH: 26
-    SW: 27
-    BEQ: 28
-    BGE: 29
-    BGEU: 30
-    BLT: 31
-    BLTU: 32
-    BNE: 33
-    JAL: 34
-    JALR: 35
-    MUL: 36
-    DIV: 37
-    DIVU: 38
-    REM: 39
-    REMU: 40
+    SW: 25
+    BNE: 26
+    JAL: 27
+    JALR: 28
+    MUL: 29
+    DIV: 30
+    DIVU: 31
+    REM: 32
+    REMU: 33
+    LUI: 34
+    BLOCK: 35
 
 @dataclass
 class FunctionDescriptions:
     identifier: str
     param_types: list[str] #type used in ir
     param_num: int
+    ret_size: int
     block: list[str]#split by '\n'
+    phiMap: dict[str,str]=None
 
 @dataclass
 class Position:
     reg: bool #whether stored in register
-    id: int #register id/ stack offset
+    id: int #register id/ stack offset,signed 32
+    const: bool=False #whether is constant
 
 
 @dataclass
 class Op:
-    opcode: Opcode
+    opcode: int
     rd: int
     r1: int
     r2: int
+    label: str #reserved for branch op
+
+@dataclass
+class Function:
+    identifier: str
+    ops: list[Op]
