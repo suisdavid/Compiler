@@ -1,0 +1,230 @@
+target triple = "riscv32-unknown-unknown-elf"
+
+declare void @print_i32(i32)
+declare void @println_i32(i32)
+declare i32 @get_i32()
+declare ptr @__rx_alloc(i32, i32)
+
+%Vec = type{ i32, i32, ptr }
+
+%Internal.Unit = type{  }
+
+%S = type{ i1, i32, i1, [2 x i32] }
+
+define %S @CloneS(ptr %temp1)
+{
+entry:
+    %temp2 = alloca %S
+    %temp4 = getelementptr %S, ptr %temp1, i32 0, i32 0
+    %temp5 = load i1, ptr %temp4
+    %temp6 = getelementptr %S, ptr %temp2, i32 0, i32 0
+    store i1 %temp5, ptr %temp6
+    %temp7 = getelementptr %S, ptr %temp1, i32 0, i32 1
+    %temp8 = load i32, ptr %temp7
+    %temp9 = getelementptr %S, ptr %temp2, i32 0, i32 1
+    store i32 %temp8, ptr %temp9
+    %temp10 = getelementptr %S, ptr %temp1, i32 0, i32 2
+    %temp11 = load i1, ptr %temp10
+    %temp12 = getelementptr %S, ptr %temp2, i32 0, i32 2
+    store i1 %temp11, ptr %temp12
+    %temp13 = getelementptr %S, ptr %temp1, i32 0, i32 3
+    %temp14 = load [2 x i32], ptr %temp13
+    %temp15 = getelementptr %S, ptr %temp2, i32 0, i32 3
+    %temp16 = alloca i32
+    store i32 0, ptr %temp16
+    br label %block1
+block1:
+    %temp20 = load i32, ptr %temp16
+    %temp17 = getelementptr [2 x i32], ptr %temp13, i32 0, i32 %temp20
+    %temp18 = load i32, ptr %temp17
+    %temp19 = getelementptr [2 x i32], ptr %temp15, i32 0, i32 %temp20
+    store i32 %temp18, ptr %temp19
+    %temp21 = add i32 %temp20, 1
+    store i32 %temp21, ptr %temp16
+    %temp22 = icmp ne i32 %temp21, 2
+    br i1 %temp22, label %block1,label %block2
+block2:
+    %temp3 = load %S, ptr %temp2
+    ret %S %temp3
+}
+
+define i1 @EqualS(ptr %temp2, ptr %temp3){
+entry:
+    %temp1 = alloca i1
+    store i1 true, ptr %temp1    %temp5 = getelementptr %S, ptr %temp2, i32 0, i32 0
+    %temp7 = load i1, ptr %temp5
+    %temp6 = getelementptr %S, ptr %temp3, i32 0, i32 0
+    %temp8 = load i1, ptr %temp6
+    %temp9 = icmp eq i1 %temp7, %temp8
+    br i1 %temp9, label %block3, label %block1
+block3:
+    %temp10 = getelementptr %S, ptr %temp2, i32 0, i32 1
+    %temp12 = load i32, ptr %temp10
+    %temp11 = getelementptr %S, ptr %temp3, i32 0, i32 1
+    %temp13 = load i32, ptr %temp11
+    %temp14 = icmp eq i32 %temp12, %temp13
+    br i1 %temp14, label %block4, label %block1
+block4:
+    %temp15 = getelementptr %S, ptr %temp2, i32 0, i32 2
+    %temp17 = load i1, ptr %temp15
+    %temp16 = getelementptr %S, ptr %temp3, i32 0, i32 2
+    %temp18 = load i1, ptr %temp16
+    %temp19 = icmp eq i1 %temp17, %temp18
+    br i1 %temp19, label %block5, label %block1
+block5:
+    %temp20 = getelementptr %S, ptr %temp2, i32 0, i32 3
+    %temp22 = load [2 x i32], ptr %temp20
+    %temp21 = getelementptr %S, ptr %temp3, i32 0, i32 3
+    %temp23 = load [2 x i32], ptr %temp21
+    %temp25 = alloca i32
+    store i32 0, ptr %temp25
+    %temp30 = alloca i1
+    store i1 true, ptr %temp30
+    br label %block6
+block6:
+    %temp31 = load i32, ptr %temp25
+    %temp26 = getelementptr [2 x i32], ptr %temp20, i32 0, i32 %temp31
+    %temp28 = load i32, ptr %temp26
+    %temp27 = getelementptr [2 x i32], ptr %temp21, i32 0, i32 %temp31
+    %temp29 = load i32, ptr %temp27
+    %temp34 = icmp eq i32 %temp28, %temp29
+    %temp32 = add i32 %temp31, 1
+    store i32 %temp32, ptr %temp25
+    br i1 %temp34, label %block7, label %block8
+block7:
+    %temp33 = icmp ne i32 %temp32, 2
+    br i1 %temp33, label %block6,label %block9
+block8:
+    store i1 false, ptr %temp30
+    br label %block9
+block9:
+    %temp24 = load i1, ptr %temp30
+    br i1 %temp24, label %block2, label %block1
+block1:
+    store i1 false, ptr %temp1
+    br label %block2
+block2:
+    %temp4 = load i1, ptr %temp1
+    ret i1 %temp4
+}
+
+define i32 @func1(i32 %param1){
+entry:
+    %prm1 = alloca i32
+    store i32 %param1, ptr %prm1
+    %temp1 = load i32, ptr %prm1
+    call void @println_i32( i32 %temp1 )
+    %temp2 = freeze %Internal.Unit zeroinitializer
+    %temp3 = load i32, ptr %prm1
+    ret i32 %temp3
+}
+
+define %S @func2(%S %param1){
+entry:
+    %prm1 = alloca %S
+    store %S %param1, ptr %prm1
+    %temp1 = load %S, ptr %prm1
+    %temp4 = getelementptr %S, ptr %prm1, i32 0, i32 1
+    %temp3 = load i32, ptr %temp4
+    store i32 99, ptr %temp4
+    %temp5 = freeze %Internal.Unit zeroinitializer
+    %temp6 = load %S, ptr %prm1
+    %temp9 = getelementptr %S, ptr %prm1, i32 0, i32 3
+    %temp8 = load [2 x i32], ptr %temp9
+    %temp12 = getelementptr [2 x i32], ptr %temp9, i32 0, i32 1
+    %temp11 = load i32, ptr %temp12
+    store i32 77, ptr %temp12
+    %temp13 = freeze %Internal.Unit zeroinitializer
+    %temp14 = load %S, ptr %prm1
+    ret %S %temp14
+}
+
+define %Internal.Unit @rx_source_main(){
+entry:
+    %temp1 = alloca [2 x i32]
+    %temp4 = alloca i32
+    %temp3 =  call i32 @func1( i32 1 )
+    store i32 %temp3, ptr %temp4
+    %temp6 = alloca i32
+    %temp5 =  call i32 @func1( i32 2 )
+    store i32 %temp5, ptr %temp6
+    %temp7 = getelementptr [2 x i32], ptr %temp1, i32 0, i32 0
+    store i32 %temp3, ptr %temp7
+    %temp8 = getelementptr [2 x i32], ptr %temp1, i32 0, i32 1
+    store i32 %temp5, ptr %temp8
+    %temp2 = load [2 x i32], ptr %temp1
+    %temp10 = alloca i32
+    %temp9 =  call i32 @func1( i32 3 )
+    store i32 %temp9, ptr %temp10
+    %temp11 = alloca %S
+    %temp13 = getelementptr %S, ptr %temp11, i32 0, i32 0
+    store i1 0, ptr %temp13
+    %temp14 = getelementptr %S, ptr %temp11, i32 0, i32 1
+    store i32 %temp9, ptr %temp14
+    %temp15 = getelementptr %S, ptr %temp11, i32 0, i32 2
+    store i1 1, ptr %temp15
+    %temp16 = getelementptr %S, ptr %temp11, i32 0, i32 3
+    store [2 x i32] %temp2, ptr %temp16
+    %temp12 = load %S, ptr %temp11
+    %var1 = alloca %S
+    store %S %temp12, ptr %var1
+    %temp17 = load %S, ptr %var1
+    %temp19 = alloca %S
+    %temp18 =  call %S @func2( %S %temp17 )
+    store %S %temp18, ptr %temp19
+    %var2 = alloca %S
+    store %S %temp18, ptr %var2
+    %temp20 = load %S, ptr %var1
+    %temp23 = getelementptr %S, ptr %var1, i32 0, i32 1
+    %temp22 = load i32, ptr %temp23
+    call void @println_i32( i32 %temp22 )
+    %temp24 = freeze %Internal.Unit zeroinitializer
+    %temp25 = load %S, ptr %var1
+    %temp28 = getelementptr %S, ptr %var1, i32 0, i32 3
+    %temp27 = load [2 x i32], ptr %temp28
+    %temp31 = getelementptr [2 x i32], ptr %temp28, i32 0, i32 1
+    %temp30 = load i32, ptr %temp31
+    call void @println_i32( i32 %temp30 )
+    %temp32 = freeze %Internal.Unit zeroinitializer
+    %temp33 = load %S, ptr %var2
+    %temp36 = getelementptr %S, ptr %var2, i32 0, i32 1
+    %temp35 = load i32, ptr %temp36
+    call void @println_i32( i32 %temp35 )
+    %temp37 = freeze %Internal.Unit zeroinitializer
+    %temp38 = load %S, ptr %var2
+    %temp41 = getelementptr %S, ptr %var2, i32 0, i32 3
+    %temp40 = load [2 x i32], ptr %temp41
+    %temp44 = getelementptr [2 x i32], ptr %temp41, i32 0, i32 1
+    %temp43 = load i32, ptr %temp44
+    call void @println_i32( i32 %temp43 )
+    %temp45 = freeze %Internal.Unit zeroinitializer
+    %temp46 = load %S, ptr %var1
+    %temp47 = load %S, ptr %var2
+    store %S %temp46, ptr %var2
+    %temp48 = freeze %Internal.Unit zeroinitializer
+    %temp49 = load %S, ptr %var2
+    %temp52 = getelementptr %S, ptr %var2, i32 0, i32 1
+    %temp51 = load i32, ptr %temp52
+    call void @println_i32( i32 %temp51 )
+    %temp53 = freeze %Internal.Unit zeroinitializer
+    %temp54 = load %S, ptr %var2
+    %temp57 = getelementptr %S, ptr %var2, i32 0, i32 2
+    %temp56 = load i1, ptr %temp57
+    %temp58 = zext i1 %temp56 to i32
+    call void @println_i32( i32 %temp58 )
+    %temp59 = freeze %Internal.Unit zeroinitializer
+    %temp60 = load %S, ptr %var2
+    %temp63 = getelementptr %S, ptr %var2, i32 0, i32 0
+    %temp62 = load i1, ptr %temp63
+    %temp64 = zext i1 %temp62 to i32
+    call void @println_i32( i32 %temp64 )
+    %temp65 = freeze %Internal.Unit zeroinitializer
+    %temp66 = freeze %Internal.Unit zeroinitializer
+    ret %Internal.Unit %temp66
+}
+
+define i32 @main(){
+    call %Internal.Unit @rx_source_main( )
+    ret i32 0
+}
+

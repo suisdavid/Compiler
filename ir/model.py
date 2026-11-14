@@ -42,7 +42,7 @@ class IRFunction:
     block:str
     scope: IRScope
     body: ast_nodes.BlockExpression
-    phiMap: dict[str,str]
+    phiMap: dict[str,str]={}
 
 
 

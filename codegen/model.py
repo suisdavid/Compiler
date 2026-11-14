@@ -42,7 +42,7 @@ class FunctionDescriptions:
     param_num: int
     ret_size: int
     block: list[str]#split by '\n'
-    phiMap: dict[str,str]=None
+    phiMap: dict[str,str]={}
 
 @dataclass
 class Position:
@@ -56,8 +56,8 @@ class Op:
     opcode: int
     rd: int
     r1: int
-    r2: int
-    label: str #reserved for branch op
+    r2: int=0
+    label: str=None #reserved for branch op
 
 @dataclass
 class Function:

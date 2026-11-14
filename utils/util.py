@@ -20,6 +20,14 @@ class Util:
         x%=(1<<32)
         return x if x<(1<<31) else (x-(1<<32))
 
+    def div(self,x:int,y:int)->tuple[int,int]:#return quotient and remainder
+        if x==0:
+            return (0,0)
+        quotient=abs(x)//abs(y)
+        if (x<0 and y>0) or (x>0 and y<0):
+            quotient=-quotient
+        return quotient,x-y*quotient
+
     def prune1(self,s:str)->str:#one line
         return '    '+s.strip()+'\n'
     

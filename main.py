@@ -65,6 +65,8 @@ if __name__=="__main__":#python3 main.py --stage <stage> <input_file> <output_fi
         sys.exit(0)
     generator=Generator(functionDescriptions,sys.argv[4])
     generator.Generate()
+    if stage=="codegen":
+        sys.exit(0)
 
 
     

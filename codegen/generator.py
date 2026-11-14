@@ -3,6 +3,7 @@ from dataclasses import dataclass,field
 from codegen.model import *
 from utils.util import util
 
+#next update: free variables when they're no longer used
 class Generator:
     class Allocator: #for register allocating
         def __init__(self,phiMap:dict[str,str]):
@@ -32,7 +33,7 @@ class Generator:
             else:
                 if is_param==True:
                     if varSize<=4 and 0 in self.in_use[util.regNum:]:
-                        idx=self.in_use[util.regNum:].index(0)+self.regNum
+                        idx=self.in_use[util.regNum:].index(0)+util.regNum
                         self.in_use[idx]=1
                         self.varpos[varName]=Position(reg=True,id=util.regMap[util.useregs[idx]])
                     else:
@@ -84,28 +85,9 @@ class Generator:
             offset%=4096
         self.Emit(Opcode.ADD,r1,r1,r0)
         return r1,offset
-     
-
-    def Load(self,pos:Position,r1:int):#Load four bytes from r1(addr) into po
-        if pos.reg:
-            self.Emit(Opcode.LW,pos.id,r1,0)
-        else:
-            tp=util.regMap[util.tempregs[2]] 
-            self.Emit(Opcode.LW,tp,r1,0)
-            r2,imm=self.GetStackOffset(pos.id,True) if pos.id>=0 else self.GetStackOffset(-pos.id,False)
-            self.Emit(Opcode.SW,tp,r2,imm)
-
-    def Store(self,pos:Position,r1:int):#Load four bytes from pos into r1(addr)
-        if pos.reg:
-            self.Emit(Opcode.SW,pos.id,r1,0)
-        else:
-            r2,imm=self.GetStackOffset(pos.id,True) if pos.id>=0 else self.GetStackOffset(-pos.id,False)
-            tp=util.regMap[util.tempregs[2]] 
-            self.Emit(Opcode.LW,tp,r2,imm)
-            self.Emit(Opcode.SW,tp,r1,0)
 
 
-    def LoadConst(self,offset:int,available:int=0):#load offset into the available temp register
+    def LoadConst(self,offset:int,available:int=0)->int:#load offset into the available temp register
         rd=util.regMap[util.tempregs[3]] 
         if offset>=0:
             if offset%4096>=2048:
@@ -122,7 +104,31 @@ class Generator:
             else:
                 self.Emit(Opcode.LUI,rd,-(offset>>12))
                 offset=-(offset%4096)
-        self.Emit(Opcode.ADDI,util.regMap[util.tempregs[available]],rd,offset)
+        res=util.regMap[util.tempregs[available]]
+        self.Emit(Opcode.ADDI,res,rd,offset)
+        return res
+
+
+    def Load(self,pos:Position,r1:int):#Load four bytes from r1(addr) into po
+        if pos.reg:
+            self.Emit(Opcode.LW,pos.id,r1,0)
+        else:
+            tp=util.regMap[util.tempregs[2]] 
+            self.Emit(Opcode.LW,tp,r1,0)
+            r2,imm=self.GetStackOffset(pos.id,True) if pos.id>=0 else self.GetStackOffset(-pos.id,False)
+            self.Emit(Opcode.SW,tp,r2,imm)
+    
+    def Store(self,pos:Position,r1:int):#Load four bytes from pos into r1(addr)
+        if pos.const:
+            self.Emit(Opcode.SW,self.LoadConst(pos.id),r1,0)
+        elif pos.reg:
+            self.Emit(Opcode.SW,pos.id,r1,0)
+        else:
+            r2,imm=self.GetStackOffset(pos.id,True) if pos.id>=0 else self.GetStackOffset(-pos.id,False)
+            tp=util.regMap[util.tempregs[2]] 
+            self.Emit(Opcode.LW,tp,r2,imm)
+            self.Emit(Opcode.SW,tp,r1,0)
+
 
     def LoadStackOffset(self,offset:int,available:int=0,sp:bool=True):#load sp/gp+offset into the available temp register
         rd=util.regMap[util.tempregs[available]] 
@@ -139,8 +145,8 @@ class Generator:
             return
         if offset>=-2048 and offset<2048:
             self.Emit(Opcode.ADDI,rd,rd,offset)
-        r1=self.LoadConst(offset)
-        self.Emit(Opcode.ADD,rd,rd,r1)
+        else:
+            self.Emit(Opcode.ADD,rd,rd,self.LoadConst(offset))
 
     def PutInReg(self,pos:Position,available:int=0)->int:#return temp register id,available is provided temp register id
         if pos.const:#const but not in size limit
@@ -204,7 +210,7 @@ class Generator:
                 self.Emit(Opcode.JAL,util.regMap['t6'],0,0,"internal.memcpy")
 
         #step 3: update rbp and call(ra is pushed into stack at the beginning of the callee function so that pc is not needed)
-        self.Emit(Opcode.ADD,gp,sp,-8)#update rbp
+        self.Emit(Opcode.ADDI,gp,sp,-8)#update rbp
         self.Emit(Opcode.JAL,ra,0,0,f'{callee}.real_entry')
 
         #rsp -= 8+final_stk_offset at the beginning of the callee function, and returned to the -offset at the end of the callee function
@@ -279,11 +285,11 @@ class Generator:
                         elif opcode=='mul':
                             allocator.varpos[rd]=Position(reg=False,id=util.s32(r1.id*r2.id),const=True)
                         elif opcode=='sdiv':
-                            allocator.varpos[rd]=Position(reg=False,id=util.s32(r1.id//r2.id),const=True)
+                            allocator.varpos[rd]=Position(reg=False,id=util.div(r1.id,r2.id)[0],const=True)
                         elif opcode=='udiv':
                             allocator.varpos[rd]=Position(reg=False,id=util.s32(util.u32(r1.id)//util.u32(r2.id)),const=True)
                         elif opcode=='srem':
-                            allocator.varpos[rd]=Position(reg=False,id=util.s32(r1.id%r2.id),const=True)
+                            allocator.varpos[rd]=Position(reg=False,id=util.div(r1.id,r2.id)[1],const=True)
                         elif opcode=='urem':
                             allocator.varpos[rd]=Position(reg=False,id=util.s32(util.u32(r1.id)%util.u32(r2.id)),const=True)
 
@@ -302,7 +308,7 @@ class Generator:
                             r1=self.PutInReg(r1,0)
                             self.ArithmeticEmit(opcodeI,pos,r1,r2.id)
                         else:
-                            opcodeN=[Opcode.ADDI,Opcode.ANDI,Opcode.ORI,Opcode.XORI,Opcode.SLL,Opcode.SRL,Opcode.SRA,Opcode.MUL,Opcode.DIV,Opcode.DIVU,Opcode.REM,Opcode.REMU][self.arithemticOps.index(opcode)]
+                            opcodeN=[Opcode.ADD,Opcode.SUB,Opcode.MUL,Opcode.AND,Opcode.OR,Opcode.XOR,Opcode.SLL,Opcode.SRL,Opcode.SRA,Opcode.DIV,Opcode.DIVU,Opcode.REM,Opcode.REMU][self.arithemticOps.index(opcode)]
                             r1=self.PutInReg(r1,0)
                             r2=self.PutInReg(r2,1)
                             self.ArithmeticEmit(opcodeN,pos,r1,r2)
@@ -313,7 +319,6 @@ class Generator:
                     r1=allocator.allocate(op[5])
                     r2=allocator.allocate(op[6])
 
-                    cmp='sgt','slt','sle','sge','ugt','ult','ule','uge'
                     if r1.const and r2.const:#constant folding
                         if cmp=='sgt':
                             allocator.varpos[rd]=Position(reg=False,id=(r1.id>r2.id),const=True)
@@ -345,20 +350,20 @@ class Generator:
                                 self.ArithmeticEmit(Opcode.SLT,pos,r1,r2)
                             elif cmp=='sgt':
                                 self.ArithmeticEmit(Opcode.SLT,pos,r2,r1)
-                            elif cmp=='sgte':
+                            elif cmp=='sge':
                                 self.Emit(Opcode.SLT,r3,r1,r2)
                                 self.ArithmeticEmit(Opcode.XORI,pos,r3,1)
-                            elif cmp=='slte':
+                            elif cmp=='sle':
                                 self.Emit(Opcode.SLT,r3,r2,r1)
                                 self.ArithmeticEmit(Opcode.XORI,pos,r3,1)
                             elif cmp=='ult':
                                 self.ArithmeticEmit(Opcode.SLTU,pos,r1,r2)
                             elif cmp=='ugt':
                                 self.ArithmeticEmit(Opcode.SLTU,pos,r2,r1)
-                            elif cmp=='ugte':
+                            elif cmp=='uge':
                                 self.Emit(Opcode.SLTU,r3,r1,r2)
                                 self.ArithmeticEmit(Opcode.XORI,pos,r3,1)
-                            elif cmp=='ulte':
+                            elif cmp=='ule':
                                 self.Emit(Opcode.SLTU,r3,r2,r1)
                                 self.ArithmeticEmit(Opcode.XORI,pos,r3,1)
 
@@ -405,9 +410,15 @@ class Generator:
 
                 elif opcode=='alloca':
                     size=util.GetAllocSize(op[3])
-                    rd=op[0]
-                    allocator.varpos[rd]=Position(reg=False,id=allocator.stk_offset)
                     allocator.stk_offset+=size
+                    offset=allocator.stk_offset
+                    pos=allocator.allocate(op[0])
+                    sp=util.regMap['sp']
+
+                    if offset<2048:
+                        self.ArithmeticEmit(Opcode.ADDI,pos,sp,offset)
+                    else:
+                        self.ArithmeticEmit(Opcode.ADD,pos,sp,self.LoadConst(offset,0))
 
                 elif opcode=='load':
                     size=util.GetAllocSize(op[3])
@@ -434,24 +445,6 @@ class Generator:
                         name=op[i+1]
                         paramList.append((size,name))
                     self.Call(function,funcName,paramList,retval,retsize)#Call Function
-
-            
-
-                        
-
-
-
-
-                   
-
-
-
-                    
-
-
-                    
-
-
 
                 
             elif op[0]=='br':#jmp
@@ -517,6 +510,7 @@ class Generator:
         gp=util.regMap['gp']
         prev_ops=[Op(Opcode.BLOCK,0,0,0,f"{identifier}.real_entry"),Op(Opcode.SW,ra,sp,-4)]
         offset=8+allocator.stk_offset# sp -= 8+final_stk_offset
+        framesize=offset
         if offset<=2048:
             prev_ops.append(Op(Opcode.ADDI,sp,sp,-offset))
         else:
@@ -533,7 +527,7 @@ class Generator:
 
         #return
         self.Emit(Opcode.BLOCK,0,0,0,f"{identifier}.return")
-        self.Add(sp,offset)
+        self.Add(sp,framesize)
         self.Emit(Opcode.LW,gp,sp,-8)
         self.Emit(Opcode.LW,ra,sp,-4)
         self.Emit(Opcode.JALR,0,ra,0)
@@ -581,7 +575,7 @@ class Generator:
             elif op.opcode==Opcode.ORI:
                 f.write(util.prune1(f"ori x{op.rd}, x{op.r1}, {op.r2}"))
             elif op.opcode==Opcode.XORI:
-                f.write(util.prune1(f"xor x{op.rd}, x{op.r1}, {op.r2}"))
+                f.write(util.prune1(f"xori x{op.rd}, x{op.r1}, {op.r2}"))
             elif op.opcode==Opcode.SLLI:
                 f.write(util.prune1(f"slli x{op.rd}, x{op.r1}, {op.r2}"))
             elif op.opcode==Opcode.SRLI:
@@ -597,7 +591,7 @@ class Generator:
             elif op.opcode==Opcode.SW:
                 f.write(util.prune1(f"sw x{op.rd}, {op.r2}(x{op.r1})"))
             elif op.opcode==Opcode.BNE:
-                f.write(util.prune1(f"beq x{op.r1}, x{op.r2}, {op.label}"))
+                f.write(util.prune1(f"bne x{op.r1}, x{op.r2}, {op.label}"))
             elif op.opcode==Opcode.JAL:
                 f.write(util.prune1(f"jal x{op.rd}, {op.label}"))
             elif op.opcode==Opcode.JALR:
