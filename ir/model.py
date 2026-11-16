@@ -44,5 +44,3 @@ class IRFunction:
     body: ast_nodes.BlockExpression
     phiMap: dict[str,str]=field(default_factory=dict)
 
-
-

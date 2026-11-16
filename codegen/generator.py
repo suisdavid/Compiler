@@ -24,14 +24,16 @@ class Generator:
             return -1 
         
         def allocate(self,varName:str,varSize:int=4,is_param:bool=False)->Position:
-            if not varName.startswith("%"): #instant number
+            if not varName.startswith("%"): #immediate number
                 if varName=='true':
-                    return Position(reg=False,id=True,const=True)
+                    return Position(reg=False,id=1,const=True)
                 elif varName=='false':
-                    return Position(reg=False,id=False,const=True)
+                    return Position(reg=False,id=0,const=True)
+                elif varName=='zeroinitializer':
+                    return Position(reg=False,id=0,const=True)
                 else:
                     return Position(reg=False,id=int(varName),const=True)
-            if self.phiMap.get(varName):
+            while self.phiMap.get(varName):
                 varName=self.phiMap[varName]
 
             pos=self.varpos.get(varName)
@@ -99,6 +101,7 @@ class Generator:
 
     def LoadConst(self,offset:int,available:int=0)->int:#load offset into the available temp register
         rd=util.regMap[util.tempregs[3]] 
+        offset=util.s32(offset)
         if offset>=0:
             if offset%4096>=2048:
                 self.Emit(Opcode.LUI,rd,(offset>>12)+1)
@@ -158,14 +161,17 @@ class Generator:
         else:
             self.Emit(Opcode.ADD,rd,rd,self.LoadConst(offset))
 
-    def PutInReg(self,pos:Position,available:int=0)->int:#return temp register id,available is provided temp register id
+    def PutInReg(self,pos:Position,available:int=0,force:bool=False)->int:#return temp register id,available is the  provided temp register id,force means must put into the provided temp reg
+        rd=util.regMap[util.tempregs[available]]
         if pos.const:#const but not in size limit
             self.LoadConst(pos.id,available)
-            return util.regMap[util.tempregs[available]]
+            return rd
         if pos.reg:
-            return pos.id
+            if force:
+                self.Emit(Opcode.ADDI,rd,pos.id,0)
+            else:
+                return pos.id
         r1,imm=self.GetStackOffset(pos.id) if pos.id>=0 else self.GetStackOffset(-pos.id,False)
-        rd=util.regMap[util.tempregs[available]]
         self.Emit(Opcode.LW,rd,r1,imm)#load i32
         return rd
 
@@ -183,7 +189,7 @@ class Generator:
         self.ArithmeticEmit(Opcode.ADDI,new_pos,self.PutInReg(prev_pos),0)
 
     def Call(self,caller:FunctionDescriptions,callee:str,paramList:list[tuple[int,str]],retval:str=None,retsize:int=0):
-        #step 1: calculate the conflicting local and param registers
+        #step 1: put in_use local and param registers into stack
         conflict=[]
         caller_allocator=self.functionAllocators[caller.identifier]
         callee_allocator=self.functionAllocators[callee]
@@ -205,9 +211,11 @@ class Generator:
             prev_pos=caller_allocator.allocate(name)
             new_pos=callee_allocator.varpos.get(f"%param{i+1}")
             if new_pos.reg==False:#updated rsp effect
-                new_pos=Position(reg=False,id=-new_pos.id)
+                new_pos=Position(reg=False,id=-new_pos.id-8)
             if prev_pos.reg==False and prev_pos.const==False and prev_pos.id>=0:#updated rsp effect
                 prev_pos=Position(reg=False,id=prev_pos.id+offset)
+            elif prev_pos.reg:#retrieve from stack
+                prev_pos=Position(reg=False,id=offset-4*(conflict.index(prev_pos.id)+1))
 
             if size==0:
                 continue
@@ -234,7 +242,7 @@ class Generator:
             if retsize==0:
                 caller_allocator.addUnit(retval)
                 return
-            pos=caller_allocator.allocate(retval)
+            pos=caller_allocator.allocate(retval,retsize)
             if retsize==4:#passed with a0
                 self.Mov(pos,Position(reg=True,id=a0))
             else: #passed with stack
@@ -265,12 +273,23 @@ class Generator:
     def Parse(self,function:FunctionDescriptions):
         identifier=function.identifier
         allocator=self.functionAllocators[identifier]
-        for op in function.block:
-            op=list(filter(lambda x: x!='', op.replace(',',' ').replace(" x ","x").split(' ')))#replace(" x ","x") is for handling array types
+        lastUse={}#varName->last_used_time
+        for i in range(len(function.block)):
+            op=list(filter(lambda x: x!='', function.block[i].replace(',',' ').replace("="," = ").replace(" x ","x").split(' ')))#replace(" x ","x") is for handling array types
+            if len(op)==0:
+                continue
+            for each in op:
+                if each.startswith("%param") or each.startswith("%temp") or each.startswith("%prm") or each.startswith("%var"):
+                    lastUse[each]=i
+            
+        for i in range(len(function.block)):
+            op=list(filter(lambda x: x!='', function.block[i].replace(',',' ').replace("="," = ").replace(" x ","x").split(' ')))#replace(" x ","x") is for handling array types
             if len(op)==0:
                 continue
             allocator.check_free()
             if op[0].startswith("%"):
+                if i>=lastUse[op[0]]:#not used after this op
+                    continue
                 opcode=op[2]
                 rd=op[0]
                 if opcode in self.arithmeticOps:
@@ -278,7 +297,7 @@ class Generator:
                     r1=allocator.allocate(op[4])
                     r2=allocator.allocate(op[5])
                 
-                    if r1.const and r2.const:#constant folding
+                    if r1.const and r2.const and not function.phiMap.get(rd):#constant folding
                         if opcode=='add':
                             allocator.varpos[rd]=Position(reg=False,id=util.s32(r1.id+r2.id),const=True)
                         elif opcode=='and':
@@ -294,7 +313,7 @@ class Generator:
                         elif opcode=='lshr':
                             allocator.varpos[rd]=Position(reg=False,id=util.s32((util.u32(r1.id)>>(r2.id%32))),const=True)
                         elif opcode=='ashr':
-                            allocator.varpos[rd]=Position(reg=False,id=util.s32(r1.id>>(r2.id%32))) if r1.id>=0 else util.s32((util.u32(r1.id)>>(r2.id%32))-(1<<(32-r2.id%32)),const=True)
+                            allocator.varpos[rd]=Position(reg=False,id=util.s32(r1.id)>>(r2.id%32),const=True)
                         elif opcode=='mul':
                             allocator.varpos[rd]=Position(reg=False,id=util.s32(r1.id*r2.id),const=True)
                         elif opcode=='sdiv':
@@ -313,15 +332,14 @@ class Generator:
                             r2=self.PutInReg(r2,0)
                             self.ArithmeticEmit(opcodeI,pos,r2,r1.id)
                         elif r2.const and r2.id<2048 and r2.id>-2048 and opcode in ['add','and','or','xor','sub']:
-                            opcodeI=Opcode.ADDI
+                            r1=self.PutInReg(r1,0)
                             if opcode=='sub':
-                                r2.id=-r2.id
+                                self.ArithmeticEmit(Opcode.ADDI,pos,r1,-r2.id)
                             else:
                                 opcodeI=[Opcode.ADDI,Opcode.ANDI,Opcode.ORI,Opcode.XORI][['add','and','or','xor'].index(opcode)]
-                            r1=self.PutInReg(r1,0)
-                            self.ArithmeticEmit(opcodeI,pos,r1,r2.id)
+                                self.ArithmeticEmit(opcodeI,pos,r1,r2.id)
                         else:
-                            opcodeN=[Opcode.ADD,Opcode.SUB,Opcode.MUL,Opcode.AND,Opcode.OR,Opcode.XOR,Opcode.SLL,Opcode.SRL,Opcode.SRA,Opcode.DIV,Opcode.DIVU,Opcode.REM,Opcode.REMU][self.arithemticOps.index(opcode)]
+                            opcodeN=[Opcode.ADD,Opcode.SUB,Opcode.MUL,Opcode.AND,Opcode.OR,Opcode.XOR,Opcode.SLL,Opcode.SRL,Opcode.SRA,Opcode.DIV,Opcode.DIVU,Opcode.REM,Opcode.REMU][self.arithmeticOps.index(opcode)]
                             r1=self.PutInReg(r1,0)
                             r2=self.PutInReg(r2,1)
                             self.ArithmeticEmit(opcodeN,pos,r1,r2)
@@ -344,16 +362,21 @@ class Generator:
                         elif cmp=='ugt':
                             allocator.varpos[rd]=Position(reg=False,id=(util.u32(r1.id)>util.u32(r2.id)),const=True) 
                         elif cmp=='ult':
-                            allocator.varpos[rd]=Position(reg=False,id=(util.u32(r1.id)>util.u32(r2.id)),const=True)  
+                            allocator.varpos[rd]=Position(reg=False,id=(util.u32(r1.id)<util.u32(r2.id)),const=True)  
                         elif cmp=='uge':
-                            allocator.varpos[rd]=Position(reg=False,id=(util.u32(r1.id)>util.u32(r2.id)),const=True)
+                            allocator.varpos[rd]=Position(reg=False,id=(util.u32(r1.id)>=util.u32(r2.id)),const=True)
                         elif cmp=='ule':
-                            allocator.varpos[rd]=Position(reg=False,id=(util.u32(r1.id)>util.u32(r2.id)),const=True)
+                            allocator.varpos[rd]=Position(reg=False,id=(util.u32(r1.id)<=util.u32(r2.id)),const=True)
+                        elif cmp=="eq":
+                            allocator.varpos[rd]=Position(reg=False,id=(r1.id==r2.id),const=True)
+                        elif cmp=="ne":
+                            allocator.varpos[rd]=Position(reg=False,id=(r1.id!=r2.id),const=True)
+
                     else:
                         pos=allocator.allocate(rd)
                         if r2.const and r2.id<2048 and r2.id>=-2048 and cmp in ['slt','ult']:
                             opcodeI=Opcode.SLTI if cmp=='slt' else Opcode.SLTIU
-                            r1=self.PutInReg(r2,0)
+                            r1=self.PutInReg(r1,0)
                             self.ArithmeticEmit(opcodeI,pos,r1,r2.id)
                         else:
                             r1=self.PutInReg(r1,0)
@@ -379,6 +402,14 @@ class Generator:
                             elif cmp=='ule':
                                 self.Emit(Opcode.SLTU,r3,r2,r1)
                                 self.ArithmeticEmit(Opcode.XORI,pos,r3,1)
+                            elif cmp=="eq":
+                                self.Emit(Opcode.XOR,r3,r2,r1)
+                                self.ArithmeticEmit(Opcode.SLTIU,pos,r3,1)
+                            elif cmp=="ne":
+                                self.Emit(Opcode.XOR,r3,r2,r1)
+                                self.Emit(Opcode.SLTIU,r3,r3,1)
+                                self.ArithmeticEmit(Opcode.XORI,pos,r3,1)
+
 
                 elif opcode=='zext':#extend i1 to i32, nothing change
                     allocator.varpos[rd]=allocator.allocate(op[4])
@@ -387,7 +418,7 @@ class Generator:
                     allocator.addUnit(rd)
 
                 elif opcode=='phi':#use phiMap
-                    pass
+                   continue
 
                 elif opcode=='getelementptr':
                     type=op[3]
@@ -404,7 +435,7 @@ class Generator:
                             self.Emit(Opcode.MUL,r3,r1,r2)
                             self.ArithmeticEmit(Opcode.ADD,pos,r0,r3)
                         else:#struct, idx must be const
-                            r1=self.LoadConst(util.GetFieldOffset(type,idx.id))
+                            r1=self.LoadConst(util.GetFieldOffset(type,idx.id),1)
                             self.ArithmeticEmit(Opcode.ADD,pos,r0,r1)
                     else:
                         size=util.GetIRAllocSize(type)
@@ -417,19 +448,18 @@ class Generator:
                 elif opcode=='extractvalue':#Vec, const 
                     pos=allocator.allocate(op[0])
                     base=allocator.allocate(op[4])
-                    r0=self.PutInReg(base)
                     idx=int(op[-1])
-                    if idx!=0:
-                        r1=util.regMap[util.tempregs[1]]
-                        self.Emit(Opcode.ADDI,r1,r0,idx*4)
-                        self.Load(pos,r1)
-                    else:
-                        self.Load(pos,r0)
+                    if pos.reg:
+                        r1,imm=self.GetStackOffset(base.id+idx*4,0,True) if base.id>=0 else self.GetStackOffset(-base.id+idx*4,0,False)
+                        self.Emit(Opcode.LW,pos.id,r1,imm)
+                    else: 
+                        self.LoadStackOffset(base.id+idx*4,0,True) if base.id>=0 else self.LoadStackOffset(-base.id+idx*4,0,False)
+                        self.Mov(pos,Position(reg=False,id=util.regMap[util.tempregs[0]]))
 
                 elif opcode=='alloca':
                     size=util.GetIRAllocSize(op[3])
-                    allocator.stk_offset+=size
                     offset=allocator.stk_offset
+                    allocator.stk_offset+=size
                     pos=allocator.allocate(op[0])
                     sp=util.regMap['sp']
 
@@ -445,7 +475,7 @@ class Generator:
                         continue
                     pos=allocator.allocate(op[0],size)
                     base=allocator.allocate(op[5])
-                    r1=self.PutInReg(base,0)
+                    r1=self.PutInReg(base,0,True)
                     if size==4:#no need to call the internal.memcpy function when load size<=4
                         self.Load(pos,r1)
                     else:
@@ -479,11 +509,10 @@ class Generator:
             elif op[0]=='store':
                 size=util.GetIRAllocSize(op[1])
                 if size==0:
-                    allocator.addUnit(op[4])
                     continue
                 pos=allocator.allocate(op[2])
                 dest=allocator.allocate(op[4])
-                r1=self.PutInReg(dest,1)
+                r1=self.PutInReg(dest,1,True)
                 if size<=4:#no need to call the internal.memcpy function when load size<=4
                     self.Store(pos,r1)
                 else:
@@ -525,7 +554,7 @@ class Generator:
         sp=util.regMap['sp']
         gp=util.regMap['gp']
         prev_ops=[Op(Opcode.BLOCK,0,0,0,f"{identifier}.real_entry"),Op(Opcode.SW,ra,sp,-4)]
-        offset=8+allocator.stk_offset# sp -= 8+final_stk_offset
+        offset=(8+allocator.stk_offset+15)//16*16# sp -= 8+final_stk_offset, aligned with 16
         framesize=offset
         if offset<=2048:
             prev_ops.append(Op(Opcode.ADDI,sp,sp,-offset))

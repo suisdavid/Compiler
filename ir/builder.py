@@ -317,7 +317,7 @@ class Builder:
                 {s1} = getelementptr {alloc_type}, ptr {p1},i32 {temp1}
                 {t1} = load {alloc_type}, ptr {s1}
                 {s2} = getelementptr {alloc_type}, ptr {p2},i32 {temp1}
-                {t2} = load {alloc_type}, ptr {s2}''' 
+                {t2} = load {alloc_type}, ptr {s2}\n''' 
             news,_=self.Equal(IRType(type=innerType,identifier=t1,left=s1),IRType(type=innerType,identifier=t2,left=s2),val,block_name)
             s+=news 
             s+=f'''{temp2} = add i32 {temp1}, 1
@@ -944,7 +944,7 @@ class Builder:
                     ret_val=self.GenTempName()
                     left=self.GenTempName()
                     unionType=util.GetAllocType(expression.retType)
-                    self.block+=f'  {ret_val} = phi {unionType} [{type0.identifier}, %{new_then_block}], [{type1.identifier}, %{new_else_block}]\n    {left}= alloca {unionType}\n    store {unionType} {ret_val}, ptr {left}\n'
+                    self.block+=f'  {ret_val} = phi {unionType} [{type0.identifier}, %{new_then_block}], [{type1.identifier}, %{new_else_block}]\n    {left} = alloca {unionType}\n    store {unionType} {ret_val}, ptr {left}\n'
                     self.phiMap[type0.identifier]=ret_val
                     self.phiMap[type1.identifier]=ret_val
                     return IRType(type=util.GetIRType(expression.retType),identifier=ret_val,left=left),after_block
@@ -965,7 +965,15 @@ class Builder:
             if expression.has_never:
                 return IRType(type='^',identifier=None),block_name
             else:
-                return type,block_name    
+                if type.type!='^' and not type.identifier.startswith("%"):#immediate, used for phiMap
+                    newvar=self.GenTempName()
+                    if type.type=='bool':
+                        self.block+=f'  {newvar} = add i1 {type.identifier}, 0\n'
+                    else:
+                        self.block+=f'  {newvar} = add i32 {type.identifier}, 0\n'
+                    return IRType(type=type.type,identifier=newvar,left=type.left),block_name
+                else:
+                    return type,block_name    
 
 
         elif isinstance(expression,ast_nodes.NormalArrayExpresssion):
@@ -1093,7 +1101,7 @@ class Builder:
             block_name="entry"
             s=f'''entry:   
                 {temp} = alloca i1
-                store i1 true, ptr {temp}'''
+                store i1 true, ptr {temp}\n'''
             for i in range(length):
                 s1=self.GenTempName()
                 s2=self.GenTempName()

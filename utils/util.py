@@ -8,7 +8,7 @@ class Util:
         self.paramStart=12
         self.SIZE={"Vec":12,"Internal.Unit":0}
         self.OFFSETS={"Vec":[0,4,8],"Internal.Unit":[]}#structName(str) to list[int](field offsets)
-        self.useregs=['t0','t1','t2','s0','s1','s2','s3','s4','s5','s6','s7','s8','s9','s10','s11','a2','a3','a4','a5','a6','a7']#a2-a7 are reserved for function params
+        self.useregs=['t0','t1','t2','s0','s1','s2','s3','s4','s5','s6','s7','s8','s9','s10','s11']#a2-a7 are reserved for function params
         self.stack_offset_register='a0'
         self.memcpy_reserved='a1'
         self.tempregs=['t3','t4','t5','t6']
@@ -68,9 +68,9 @@ class Util:
             return 4
         elif type.startswith("Vec<"):
             return 12
-        elif type in ["i32","u32","isize","usize","bool","()"]:
+        elif type in ["i32","u32","isize","usize","bool"]:
             return 4
-        elif type=='^':
+        elif type=='^' or type=='()':
             return 0
 
         elif type.startswith("["):
@@ -80,8 +80,10 @@ class Util:
             return self.SIZE[type]
 
     def GetIRAllocSize(self,type:str)->int:#everything is multiple of 4, easy to store in RISC_V
-        if type in ["ptr","i32","i1","()"]:
+        if type in ["ptr","i32","i1"]:
             return 4
+        elif type=='()':
+            return 0
         elif type.startswith("["):
             innerType,length=self.GetArrayInfo(type)
             return length*self.GetIRAllocSize(innerType)

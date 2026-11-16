@@ -1,0 +1,32 @@
+.text
+.globl main
+main:
+    addi sp, sp, -16
+    sw ra, 12(sp)
+    sw gp, -8(sp)
+    addi gp, sp, -8
+    call rx_source_main.real_entry
+    lw ra, 12(sp)
+    addi sp, sp, 16
+    li a0, 0
+    ret
+
+print_i32.real_entry:
+    mv a0, a2
+    lw gp, 0(gp)
+    tail print_i32
+
+println_i32.real_entry:
+    mv a0, a2
+    lw gp, 0(gp)
+    tail println_i32
+
+get_i32.real_entry:
+    lw gp, 0(gp)
+    tail get_i32
+
+__rx_alloc.real_entry:
+    mv a0, a2
+    mv a1, a3
+    lw gp, 0(gp)
+    tail __rx_alloc
