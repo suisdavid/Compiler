@@ -1,342 +1,911 @@
-	.attribute	4, 16
-	.attribute	5, "rv32i2p1_m2p0_zmmul1p0"
-	.file	"hello.ll"
-	.text
-	.globl	CloneInner                      # -- Begin function CloneInner
-	.p2align	2
-	.type	CloneInner,@function
-CloneInner:                             # @CloneInner
-	.cfi_startproc
-# %bb.0:                                # %entry
-	addi	sp, sp, -16
-	.cfi_def_cfa_offset 16
-	lw	a0, 0(a0)
-	sw	a0, 8(sp)
-	lw	a0, 8(sp)
-	addi	sp, sp, 16
-	.cfi_def_cfa_offset 0
-	ret
-.Lfunc_end0:
-	.size	CloneInner, .Lfunc_end0-CloneInner
-	.cfi_endproc
-                                        # -- End function
-	.globl	CloneOuter                      # -- Begin function CloneOuter
-	.p2align	2
-	.type	CloneOuter,@function
-CloneOuter:                             # @CloneOuter
-	.cfi_startproc
-# %bb.0:                                # %entry
-	addi	sp, sp, -48
-	.cfi_def_cfa_offset 48
-	sw	ra, 44(sp)                      # 4-byte Folded Spill
-	.cfi_offset ra, -4
-	sw	a1, 8(sp)                       # 4-byte Folded Spill
-	mv	a1, a0
-	lw	a0, 8(sp)                       # 4-byte Folded Reload
-	sw	a1, 4(sp)                       # 4-byte Folded Spill
-	call	CloneInner
-	lw	a1, 8(sp)                       # 4-byte Folded Reload
-	sw	a0, 24(sp)
-	addi	a0, a1, 4
-	sw	a0, 12(sp)                      # 4-byte Folded Spill
-	addi	a0, sp, 28
-	sw	a0, 16(sp)                      # 4-byte Folded Spill
-	li	a0, 0
-	sw	a0, 20(sp)
-	j	.LBB1_1
-.LBB1_1:                                # %block10
-                                        # =>This Inner Loop Header: Depth=1
-	lw	a2, 16(sp)                      # 4-byte Folded Reload
-	lw	a1, 12(sp)                      # 4-byte Folded Reload
-	lw	a0, 20(sp)
-	slli	a3, a0, 2
-	add	a1, a1, a3
-	lw	a1, 0(a1)
-	add	a2, a2, a3
-	sw	a1, 0(a2)
-	addi	a0, a0, 1
-	sw	a0, 20(sp)
-	li	a1, 3
-	bne	a0, a1, .LBB1_1
-	j	.LBB1_2
-.LBB1_2:                                # %block11
-	lw	a1, 4(sp)                       # 4-byte Folded Reload
-	lw	a0, 24(sp)
-	lw	a2, 28(sp)
-	lw	a3, 32(sp)
-	lw	a4, 36(sp)
-	sw	a4, 12(a1)
-	sw	a3, 8(a1)
-	sw	a2, 4(a1)
-	sw	a0, 0(a1)
-	lw	ra, 44(sp)                      # 4-byte Folded Reload
-	.cfi_restore ra
-	addi	sp, sp, 48
-	.cfi_def_cfa_offset 0
-	ret
-.Lfunc_end1:
-	.size	CloneOuter, .Lfunc_end1-CloneOuter
-	.cfi_endproc
-                                        # -- End function
-	.globl	EqualInner                      # -- Begin function EqualInner
-	.p2align	2
-	.type	EqualInner,@function
-EqualInner:                             # @EqualInner
-	.cfi_startproc
-# %bb.0:                                # %entry
-	addi	sp, sp, -16
-	.cfi_def_cfa_offset 16
-	li	a2, 1
-	sb	a2, 15(sp)
-	lw	a0, 0(a0)
-	lw	a1, 0(a1)
-	beq	a0, a1, .LBB2_2
-	j	.LBB2_1
-.LBB2_1:                                # %block1
-	li	a0, 0
-	sb	a0, 15(sp)
-	j	.LBB2_2
-.LBB2_2:                                # %block2
-	lbu	a0, 15(sp)
-	addi	sp, sp, 16
-	.cfi_def_cfa_offset 0
-	ret
-.Lfunc_end2:
-	.size	EqualInner, .Lfunc_end2-EqualInner
-	.cfi_endproc
-                                        # -- End function
-	.globl	EqualOuter                      # -- Begin function EqualOuter
-	.p2align	2
-	.type	EqualOuter,@function
-EqualOuter:                             # @EqualOuter
-	.cfi_startproc
-# %bb.0:                                # %entry
-	addi	sp, sp, -48
-	.cfi_def_cfa_offset 48
-	sw	ra, 44(sp)                      # 4-byte Folded Spill
-	sw	s0, 40(sp)                      # 4-byte Folded Spill
-	.cfi_offset ra, -4
-	.cfi_offset s0, -8
-	addi	s0, sp, 48
-	.cfi_def_cfa s0, 0
-	sw	a1, -20(s0)                     # 4-byte Folded Spill
-	sw	a0, -16(s0)                     # 4-byte Folded Spill
-	li	a2, 1
-	sb	a2, -9(s0)
-	call	EqualInner
-	andi	a0, a0, 1
-	beqz	a0, .LBB3_6
-	j	.LBB3_1
-.LBB3_1:                                # %block5
-	lw	a0, -20(s0)                     # 4-byte Folded Reload
-	lw	a1, -16(s0)                     # 4-byte Folded Reload
-	addi	a1, a1, 4
-	sw	a1, -36(s0)                     # 4-byte Folded Spill
-	addi	a0, a0, 4
-	sw	a0, -32(s0)                     # 4-byte Folded Spill
-	mv	a1, sp
-	addi	a0, a1, -16
-	sw	a0, -28(s0)                     # 4-byte Folded Spill
-	mv	sp, a0
-	li	a0, 0
-	sw	a0, -16(a1)
-	mv	a1, sp
-	addi	a0, a1, -16
-	sw	a0, -24(s0)                     # 4-byte Folded Spill
-	mv	sp, a0
-	li	a0, 1
-	sb	a0, -16(a1)
-	j	.LBB3_2
-.LBB3_2:                                # %block6
-                                        # =>This Inner Loop Header: Depth=1
-	lw	a3, -28(s0)                     # 4-byte Folded Reload
-	lw	a1, -32(s0)                     # 4-byte Folded Reload
-	lw	a0, -36(s0)                     # 4-byte Folded Reload
-	lw	a2, 0(a3)
-	slli	a4, a2, 2
-	add	a0, a0, a4
-	lw	a0, 0(a0)
-	add	a1, a1, a4
-	lw	a1, 0(a1)
-	addi	a2, a2, 1
-	sw	a2, -40(s0)                     # 4-byte Folded Spill
-	sw	a2, 0(a3)
-	bne	a0, a1, .LBB3_4
-	j	.LBB3_3
-.LBB3_3:                                # %block7
-                                        #   in Loop: Header=BB3_2 Depth=1
-	lw	a0, -40(s0)                     # 4-byte Folded Reload
-	li	a1, 3
-	bne	a0, a1, .LBB3_2
-	j	.LBB3_5
-.LBB3_4:                                # %block8
-	lw	a1, -24(s0)                     # 4-byte Folded Reload
-	li	a0, 0
-	sb	a0, 0(a1)
-	j	.LBB3_5
-.LBB3_5:                                # %block9
-	lw	a0, -24(s0)                     # 4-byte Folded Reload
-	lbu	a0, 0(a0)
-	bnez	a0, .LBB3_7
-	j	.LBB3_6
-.LBB3_6:                                # %block3
-	li	a0, 0
-	sb	a0, -9(s0)
-	j	.LBB3_7
-.LBB3_7:                                # %block4
-	lbu	a0, -9(s0)
-	addi	sp, s0, -48
-	.cfi_def_cfa sp, 48
-	lw	ra, 44(sp)                      # 4-byte Folded Reload
-	lw	s0, 40(sp)                      # 4-byte Folded Reload
-	.cfi_restore ra
-	.cfi_restore s0
-	addi	sp, sp, 48
-	.cfi_def_cfa_offset 0
-	ret
-.Lfunc_end3:
-	.size	EqualOuter, .Lfunc_end3-EqualOuter
-	.cfi_endproc
-                                        # -- End function
-	.globl	rx_source_main                  # -- Begin function rx_source_main
-	.p2align	2
-	.type	rx_source_main,@function
-rx_source_main:                         # @rx_source_main
-	.cfi_startproc
-# %bb.0:                                # %entry
-	addi	sp, sp, -144
-	.cfi_def_cfa_offset 144
-	sw	ra, 140(sp)                     # 4-byte Folded Spill
-	.cfi_offset ra, -4
-	li	a0, 7
-	sw	a0, 136(sp)
-	lw	a3, 136(sp)
-	li	a0, 1
-	sw	a0, 124(sp)
-	li	a0, 2
-	sw	a0, 128(sp)
-	li	a0, 3
-	sw	a0, 132(sp)
-	lw	a0, 124(sp)
-	lw	a1, 128(sp)
-	lw	a2, 132(sp)
-	sw	a3, 104(sp)
-	sw	a2, 116(sp)
-	sw	a1, 112(sp)
-	sw	a0, 108(sp)
-	lw	a0, 104(sp)
-	lw	a1, 108(sp)
-	lw	a2, 112(sp)
-	lw	a3, 116(sp)
-	sw	a3, 100(sp)
-	sw	a2, 96(sp)
-	sw	a1, 92(sp)
-	sw	a0, 88(sp)
-	addi	a0, sp, 16
-	addi	a1, sp, 88
-	sw	a1, 12(sp)                      # 4-byte Folded Spill
-	call	CloneOuter
-	lw	a0, 12(sp)                      # 4-byte Folded Reload
-	lw	a1, 16(sp)
-	lw	a2, 20(sp)
-	lw	a3, 24(sp)
-	lw	a4, 28(sp)
-	sw	a4, 84(sp)
-	sw	a3, 80(sp)
-	sw	a2, 76(sp)
-	sw	a1, 72(sp)
-	lw	a1, 72(sp)
-	lw	a2, 76(sp)
-	lw	a3, 80(sp)
-	lw	a4, 84(sp)
-	sw	a4, 68(sp)
-	sw	a3, 64(sp)
-	sw	a2, 60(sp)
-	sw	a1, 56(sp)
-	addi	a1, sp, 56
-	call	EqualOuter
-	andi	a0, a0, 1
-	call	println_i32
-	lw	a0, 12(sp)                      # 4-byte Folded Reload
-	call	func2
-	sw	a0, 52(sp)
-	call	println_i32
-	lw	a0, 56(sp)
-	call	println_i32
-	li	a0, 9
-	sw	a0, 48(sp)
-	sw	a0, 44(sp)
-	addi	a0, sp, 48
-	sw	a0, 40(sp)
-	addi	a0, sp, 44
-	sw	a0, 32(sp)
-	lw	a1, 32(sp)
-	lw	a0, 40(sp)
-	lw	a0, 0(a0)
-	lw	a1, 0(a1)
-	xor	a0, a0, a1
-	seqz	a0, a0
-	call	println_i32
-	lw	a1, 40(sp)
-	li	a0, 11
-	sw	a0, 0(a1)
-	lw	a1, 32(sp)
-	lw	a0, 40(sp)
-	lw	a0, 0(a0)
-	lw	a1, 0(a1)
-	xor	a0, a0, a1
-	snez	a0, a0
-	call	println_i32
-	lw	a0, 32(sp)
-	lw	a0, 0(a0)
-	call	println_i32
-	lw	ra, 140(sp)                     # 4-byte Folded Reload
-	.cfi_restore ra
-	addi	sp, sp, 144
-	.cfi_def_cfa_offset 0
-	ret
-.Lfunc_end4:
-	.size	rx_source_main, .Lfunc_end4-rx_source_main
-	.cfi_endproc
-                                        # -- End function
-	.globl	func2                           # -- Begin function func2
-	.p2align	2
-	.type	func2,@function
-func2:                                  # @func2
-	.cfi_startproc
-# %bb.0:                                # %entry
-	addi	sp, sp, -16
-	.cfi_def_cfa_offset 16
-	sw	a0, 8(sp)
-	lw	a0, 8(sp)
-	lw	a0, 0(a0)
-	addi	a0, a0, 100
-	addi	sp, sp, 16
-	.cfi_def_cfa_offset 0
-	ret
-.Lfunc_end5:
-	.size	func2, .Lfunc_end5-func2
-	.cfi_endproc
-                                        # -- End function
-	.globl	main                            # -- Begin function main
-	.p2align	2
-	.type	main,@function
-main:                                   # @main
-	.cfi_startproc
-# %bb.0:
-	addi	sp, sp, -16
-	.cfi_def_cfa_offset 16
-	sw	ra, 12(sp)                      # 4-byte Folded Spill
-	.cfi_offset ra, -4
-	call	rx_source_main
-	li	a0, 0
-	lw	ra, 12(sp)                      # 4-byte Folded Reload
-	.cfi_restore ra
-	addi	sp, sp, 16
-	.cfi_def_cfa_offset 0
-	ret
-.Lfunc_end6:
-	.size	main, .Lfunc_end6-main
-	.cfi_endproc
-                                        # -- End function
-	.section	".note.GNU-stack","",@progbits
+.text
+.globl main
+main:
+    addi sp, sp, -16
+    sw ra, 12(sp)
+    sw gp, -8(sp)
+    addi gp, sp, -8
+    call rx_source_main.real_entry
+    lw ra, 12(sp)
+    addi sp, sp, 16
+    li a0, 0
+    ret
+
+print_i32.real_entry:
+    mv a0, a2
+    lw gp, 0(gp)
+    tail print_i32
+
+println_i32.real_entry:
+    mv a0, a2
+    lw gp, 0(gp)
+    tail println_i32
+
+get_i32.real_entry:
+    lw gp, 0(gp)
+    tail get_i32
+
+__rx_alloc.real_entry:
+    mv a0, a2
+    mv a1, a3
+    lw gp, 0(gp)
+    tail __rx_alloc
+EqualS.real_entry:
+    sw x1, -4(x2)
+    addi x2, x2, -80
+EqualS.entry:
+    addi x5, x2, 0
+    addi x29, x5, 0
+    lui x31, 0
+    addi x28, x31, 1
+    sw x28, 0(x29)
+    lui x31, 0
+    addi x29, x31, 0
+    add x6, x12, x29
+    addi x28, x6, 0
+    lw x7, 0(x28)
+    lui x31, 0
+    addi x29, x31, 0
+    add x8, x13, x29
+    addi x28, x8, 0
+    lw x9, 0(x28)
+    xor x30, x9, x7
+    sltiu x18, x30, 1
+    bne x18, x0, EqualS.block3
+    jal x0, EqualS.block1
+EqualS.block3:
+    lui x31, 0
+    addi x29, x31, 4
+    add x19, x12, x29
+    addi x28, x19, 0
+    lw x20, 0(x28)
+    lui x31, 0
+    addi x29, x31, 4
+    add x21, x13, x29
+    addi x28, x21, 0
+    lw x22, 0(x28)
+    xor x30, x22, x20
+    sltiu x23, x30, 1
+    bne x23, x0, EqualS.block4
+    jal x0, EqualS.block1
+EqualS.block4:
+    lui x31, 0
+    addi x29, x31, 8
+    add x24, x12, x29
+    addi x28, x24, 0
+    lw x25, 0(x28)
+    lui x31, 0
+    addi x29, x31, 8
+    add x26, x13, x29
+    addi x28, x26, 0
+    lw x27, 0(x28)
+    xor x30, x27, x25
+    sltiu x28, x30, 1
+    sw x28, 4(x2)
+    lw x28, 4(x2)
+    bne x28, x0, EqualS.block5
+    jal x0, EqualS.block1
+EqualS.block5:
+    lui x31, 0
+    addi x29, x31, 12
+    add x28, x12, x29
+    sw x28, 8(x2)
+    lui x31, 0
+    addi x29, x31, 12
+    add x28, x13, x29
+    sw x28, 12(x2)
+    addi x28, x2, 16
+    sw x28, 20(x2)
+    lw x29, 20(x2)
+    lui x31, 0
+    addi x28, x31, 0
+    sw x28, 0(x29)
+    addi x28, x2, 24
+    sw x28, 28(x2)
+    lw x29, 28(x2)
+    lui x31, 0
+    addi x28, x31, 1
+    sw x28, 0(x29)
+    jal x0, EqualS.block6
+EqualS.block6:
+    lw x28, 20(x2)
+    lw x30, 0(x28)
+    sw x30, 32(x2)
+    lw x28, 8(x2)
+    lw x29, 32(x2)
+    lui x31, 0
+    addi x30, x31, 4
+    mul x31, x29, x30
+    add x28, x28, x31
+    sw x28, 36(x2)
+    lw x28, 36(x2)
+    lw x30, 0(x28)
+    sw x30, 40(x2)
+    lw x28, 12(x2)
+    lw x29, 32(x2)
+    lui x31, 0
+    addi x30, x31, 4
+    mul x31, x29, x30
+    add x28, x28, x31
+    sw x28, 44(x2)
+    lw x28, 44(x2)
+    lw x30, 0(x28)
+    sw x30, 48(x2)
+    lw x28, 40(x2)
+    lw x29, 48(x2)
+    xor x30, x29, x28
+    sltiu x28, x30, 1
+    sw x28, 52(x2)
+    lw x28, 32(x2)
+    addi x28, x28, 1
+    sw x28, 56(x2)
+    lw x29, 20(x2)
+    lw x30, 56(x2)
+    sw x30, 0(x29)
+    lw x28, 52(x2)
+    bne x28, x0, EqualS.block7
+    jal x0, EqualS.block8
+EqualS.block7:
+    lw x28, 56(x2)
+    lui x31, 0
+    addi x29, x31, 2
+    xor x30, x29, x28
+    sltiu x30, x30, 1
+    xori x28, x30, 1
+    sw x28, 60(x2)
+    lw x28, 60(x2)
+    bne x28, x0, EqualS.block6
+    jal x0, EqualS.block9
+EqualS.block8:
+    lw x29, 28(x2)
+    lui x31, 0
+    addi x28, x31, 0
+    sw x28, 0(x29)
+    jal x0, EqualS.block9
+EqualS.block9:
+    lw x28, 28(x2)
+    lw x30, 0(x28)
+    sw x30, 64(x2)
+    lw x28, 64(x2)
+    bne x28, x0, EqualS.block2
+    jal x0, EqualS.block1
+EqualS.block1:
+    addi x29, x5, 0
+    lui x31, 0
+    addi x28, x31, 0
+    sw x28, 0(x29)
+    jal x0, EqualS.block2
+EqualS.block2:
+    addi x28, x5, 0
+    lw x30, 0(x28)
+    sw x30, 68(x2)
+    lw x28, 68(x2)
+    addi x10, x28, 0
+    jal x0, EqualS.return
+EqualS.return:
+    addi x2, x2, 80
+    lw x3, -8(x2)
+    lw x1, -4(x2)
+    jalr x0, 0(x1)
+CloneS.real_entry:
+    sw x1, -4(x2)
+    addi x2, x2, -80
+CloneS.entry:
+    addi x5, x2, 0
+    lui x31, 0
+    addi x29, x31, 0
+    add x6, x12, x29
+    addi x28, x6, 0
+    lw x7, 0(x28)
+    lui x31, 0
+    addi x29, x31, 0
+    add x8, x5, x29
+    addi x29, x8, 0
+    sw x7, 0(x29)
+    lui x31, 0
+    addi x29, x31, 4
+    add x9, x12, x29
+    addi x28, x9, 0
+    lw x18, 0(x28)
+    lui x31, 0
+    addi x29, x31, 4
+    add x19, x5, x29
+    addi x29, x19, 0
+    sw x18, 0(x29)
+    lui x31, 0
+    addi x29, x31, 8
+    add x20, x12, x29
+    addi x28, x20, 0
+    lw x21, 0(x28)
+    lui x31, 0
+    addi x29, x31, 8
+    add x22, x5, x29
+    addi x29, x22, 0
+    sw x21, 0(x29)
+    lui x31, 0
+    addi x29, x31, 12
+    add x23, x12, x29
+    lui x31, 0
+    addi x29, x31, 12
+    add x24, x5, x29
+    addi x25, x2, 20
+    addi x29, x25, 0
+    lui x31, 0
+    addi x28, x31, 0
+    sw x28, 0(x29)
+    jal x0, CloneS.block1
+CloneS.block1:
+    addi x28, x25, 0
+    lw x26, 0(x28)
+    lui x31, 0
+    addi x30, x31, 4
+    mul x31, x26, x30
+    add x27, x23, x31
+    addi x28, x27, 0
+    lw x30, 0(x28)
+    sw x30, 24(x2)
+    lui x31, 0
+    addi x30, x31, 4
+    mul x31, x26, x30
+    add x28, x24, x31
+    sw x28, 28(x2)
+    lw x29, 28(x2)
+    lw x30, 24(x2)
+    sw x30, 0(x29)
+    addi x28, x26, 1
+    sw x28, 32(x2)
+    addi x29, x25, 0
+    lw x30, 32(x2)
+    sw x30, 0(x29)
+    lw x28, 32(x2)
+    lui x31, 0
+    addi x29, x31, 2
+    xor x30, x29, x28
+    sltiu x30, x30, 1
+    xori x28, x30, 1
+    sw x28, 36(x2)
+    lw x28, 36(x2)
+    bne x28, x0, CloneS.block1
+    jal x0, CloneS.block2
+CloneS.block2:
+    addi x28, x5, 0
+    addi x29, x2, 40
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    addi x28, x2, 40
+    addi x29, x3, 8
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    jal x0, CloneS.return
+CloneS.return:
+    addi x2, x2, 80
+    lw x3, -8(x2)
+    lw x1, -4(x2)
+    jalr x0, 0(x1)
+func1.real_entry:
+    sw x1, -4(x2)
+    addi x2, x2, -16
+func1.entry:
+    addi x5, x2, 0
+    addi x29, x5, 0
+    sw x12, 0(x29)
+    addi x28, x5, 0
+    lw x6, 0(x28)
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x12, -12(x2)
+    addi x2, x2, -20
+    sw x3, -8(x2)
+    lw x28, 12(x2)
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, println_i32.real_entry
+    addi x2, x2, 20
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x12, -12(x2)
+    addi x28, x5, 0
+    lw x7, 0(x28)
+    addi x10, x7, 0
+    jal x0, func1.return
+func1.return:
+    addi x2, x2, 16
+    lw x3, -8(x2)
+    lw x1, -4(x2)
+    jalr x0, 0(x1)
+func2.real_entry:
+    sw x1, -4(x2)
+    addi x2, x2, -48
+func2.entry:
+    addi x5, x2, 0
+    addi x29, x5, 0
+    addi x28, x3, 28
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    lui x31, 0
+    addi x29, x31, 4
+    add x6, x5, x29
+    addi x29, x6, 0
+    lui x31, 0
+    addi x28, x31, 99
+    sw x28, 0(x29)
+    lui x31, 0
+    addi x29, x31, 12
+    add x7, x5, x29
+    lui x31, 0
+    addi x29, x31, 1
+    lui x31, 0
+    addi x30, x31, 4
+    mul x31, x29, x30
+    add x8, x7, x31
+    addi x29, x8, 0
+    lui x31, 0
+    addi x28, x31, 77
+    sw x28, 0(x29)
+    addi x28, x5, 0
+    addi x29, x2, 20
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    addi x28, x2, 20
+    addi x29, x3, 8
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    jal x0, func2.return
+func2.return:
+    addi x2, x2, 48
+    lw x3, -8(x2)
+    lw x1, -4(x2)
+    jalr x0, 0(x1)
+rx_source_main.real_entry:
+    sw x1, -4(x2)
+    addi x2, x2, -272
+rx_source_main.entry:
+    addi x5, x2, 0
+    addi x6, x2, 8
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    addi x2, x2, -16
+    sw x3, -8(x2)
+    lui x31, 0
+    addi x28, x31, 1
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, func1.real_entry
+    addi x2, x2, 16
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    addi x7, x10, 0
+    addi x29, x6, 0
+    sw x7, 0(x29)
+    addi x8, x2, 12
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x7, -12(x2)
+    sw x8, -16(x2)
+    addi x2, x2, -24
+    sw x3, -8(x2)
+    lui x31, 0
+    addi x28, x31, 2
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, func1.real_entry
+    addi x2, x2, 24
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x7, -12(x2)
+    lw x8, -16(x2)
+    addi x9, x10, 0
+    addi x29, x8, 0
+    sw x9, 0(x29)
+    lui x31, 0
+    addi x29, x31, 0
+    lui x31, 0
+    addi x30, x31, 4
+    mul x31, x29, x30
+    add x18, x5, x31
+    addi x29, x18, 0
+    sw x7, 0(x29)
+    lui x31, 0
+    addi x29, x31, 1
+    lui x31, 0
+    addi x30, x31, 4
+    mul x31, x29, x30
+    add x19, x5, x31
+    addi x29, x19, 0
+    sw x9, 0(x29)
+    addi x28, x5, 0
+    addi x29, x2, 16
+    lui x31, 0
+    addi x30, x31, 8
+    jal x31, internal.memcpy
+    addi x20, x2, 24
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x7, -12(x2)
+    sw x8, -16(x2)
+    sw x9, -20(x2)
+    sw x18, -24(x2)
+    sw x19, -28(x2)
+    sw x20, -32(x2)
+    addi x2, x2, -40
+    sw x3, -8(x2)
+    lui x31, 0
+    addi x28, x31, 3
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, func1.real_entry
+    addi x2, x2, 40
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x7, -12(x2)
+    lw x8, -16(x2)
+    lw x9, -20(x2)
+    lw x18, -24(x2)
+    lw x19, -28(x2)
+    lw x20, -32(x2)
+    addi x21, x10, 0
+    addi x29, x20, 0
+    sw x21, 0(x29)
+    addi x22, x2, 28
+    lui x31, 0
+    addi x29, x31, 0
+    add x23, x22, x29
+    addi x29, x23, 0
+    lui x31, 0
+    addi x28, x31, 0
+    sw x28, 0(x29)
+    lui x31, 0
+    addi x29, x31, 4
+    add x24, x22, x29
+    addi x29, x24, 0
+    sw x21, 0(x29)
+    lui x31, 0
+    addi x29, x31, 8
+    add x25, x22, x29
+    addi x29, x25, 0
+    lui x31, 0
+    addi x28, x31, 1
+    sw x28, 0(x29)
+    lui x31, 0
+    addi x29, x31, 12
+    add x26, x22, x29
+    addi x29, x26, 0
+    addi x28, x2, 16
+    lui x31, 0
+    addi x30, x31, 8
+    jal x31, internal.memcpy
+    addi x28, x22, 0
+    addi x29, x2, 48
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    addi x27, x2, 68
+    addi x29, x27, 0
+    addi x28, x2, 48
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    addi x28, x27, 0
+    addi x29, x2, 88
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    addi x28, x2, 108
+    sw x28, 128(x2)
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x7, -12(x2)
+    sw x8, -16(x2)
+    sw x9, -20(x2)
+    sw x18, -24(x2)
+    sw x19, -28(x2)
+    sw x20, -32(x2)
+    sw x21, -36(x2)
+    sw x22, -40(x2)
+    sw x23, -44(x2)
+    sw x24, -48(x2)
+    sw x25, -52(x2)
+    sw x26, -56(x2)
+    sw x27, -60(x2)
+    addi x2, x2, -108
+    sw x3, -8(x2)
+    addi x28, x2, 196
+    addi x29, x2, 20
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    addi x3, x2, -8
+    jal x1, func2.real_entry
+    addi x2, x2, 108
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x7, -12(x2)
+    lw x8, -16(x2)
+    lw x9, -20(x2)
+    lw x18, -24(x2)
+    lw x19, -28(x2)
+    lw x20, -32(x2)
+    lw x21, -36(x2)
+    lw x22, -40(x2)
+    lw x23, -44(x2)
+    lw x24, -48(x2)
+    lw x25, -52(x2)
+    lw x26, -56(x2)
+    lw x27, -60(x2)
+    addi x29, x2, 132
+    addi x28, x2, -108
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    lw x29, 128(x2)
+    addi x28, x2, 132
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    addi x28, x2, 152
+    sw x28, 172(x2)
+    lw x29, 172(x2)
+    addi x28, x2, 132
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    lui x31, 0
+    addi x29, x31, 4
+    add x28, x27, x29
+    sw x28, 176(x2)
+    lw x28, 176(x2)
+    lw x30, 0(x28)
+    sw x30, 180(x2)
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x7, -12(x2)
+    sw x8, -16(x2)
+    sw x9, -20(x2)
+    sw x18, -24(x2)
+    sw x19, -28(x2)
+    sw x20, -32(x2)
+    sw x21, -36(x2)
+    sw x22, -40(x2)
+    sw x23, -44(x2)
+    sw x24, -48(x2)
+    sw x25, -52(x2)
+    sw x26, -56(x2)
+    sw x27, -60(x2)
+    addi x2, x2, -68
+    sw x3, -8(x2)
+    lw x28, 248(x2)
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, println_i32.real_entry
+    addi x2, x2, 68
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x7, -12(x2)
+    lw x8, -16(x2)
+    lw x9, -20(x2)
+    lw x18, -24(x2)
+    lw x19, -28(x2)
+    lw x20, -32(x2)
+    lw x21, -36(x2)
+    lw x22, -40(x2)
+    lw x23, -44(x2)
+    lw x24, -48(x2)
+    lw x25, -52(x2)
+    lw x26, -56(x2)
+    lw x27, -60(x2)
+    lui x31, 0
+    addi x29, x31, 12
+    add x28, x27, x29
+    sw x28, 184(x2)
+    lw x28, 184(x2)
+    lui x31, 0
+    addi x29, x31, 1
+    lui x31, 0
+    addi x30, x31, 4
+    mul x31, x29, x30
+    add x28, x28, x31
+    sw x28, 188(x2)
+    lw x28, 188(x2)
+    lw x30, 0(x28)
+    sw x30, 192(x2)
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x7, -12(x2)
+    sw x8, -16(x2)
+    sw x9, -20(x2)
+    sw x18, -24(x2)
+    sw x19, -28(x2)
+    sw x20, -32(x2)
+    sw x21, -36(x2)
+    sw x22, -40(x2)
+    sw x23, -44(x2)
+    sw x24, -48(x2)
+    sw x25, -52(x2)
+    sw x26, -56(x2)
+    sw x27, -60(x2)
+    addi x2, x2, -68
+    sw x3, -8(x2)
+    lw x28, 260(x2)
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, println_i32.real_entry
+    addi x2, x2, 68
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x7, -12(x2)
+    lw x8, -16(x2)
+    lw x9, -20(x2)
+    lw x18, -24(x2)
+    lw x19, -28(x2)
+    lw x20, -32(x2)
+    lw x21, -36(x2)
+    lw x22, -40(x2)
+    lw x23, -44(x2)
+    lw x24, -48(x2)
+    lw x25, -52(x2)
+    lw x26, -56(x2)
+    lw x27, -60(x2)
+    lw x28, 172(x2)
+    lui x31, 0
+    addi x29, x31, 4
+    add x28, x28, x29
+    sw x28, 196(x2)
+    lw x28, 196(x2)
+    lw x30, 0(x28)
+    sw x30, 200(x2)
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x7, -12(x2)
+    sw x8, -16(x2)
+    sw x9, -20(x2)
+    sw x18, -24(x2)
+    sw x19, -28(x2)
+    sw x20, -32(x2)
+    sw x21, -36(x2)
+    sw x22, -40(x2)
+    sw x23, -44(x2)
+    sw x24, -48(x2)
+    sw x25, -52(x2)
+    sw x26, -56(x2)
+    sw x27, -60(x2)
+    addi x2, x2, -68
+    sw x3, -8(x2)
+    lw x28, 268(x2)
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, println_i32.real_entry
+    addi x2, x2, 68
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x7, -12(x2)
+    lw x8, -16(x2)
+    lw x9, -20(x2)
+    lw x18, -24(x2)
+    lw x19, -28(x2)
+    lw x20, -32(x2)
+    lw x21, -36(x2)
+    lw x22, -40(x2)
+    lw x23, -44(x2)
+    lw x24, -48(x2)
+    lw x25, -52(x2)
+    lw x26, -56(x2)
+    lw x27, -60(x2)
+    lw x28, 172(x2)
+    lui x31, 0
+    addi x29, x31, 12
+    add x28, x28, x29
+    sw x28, 204(x2)
+    lw x28, 204(x2)
+    lui x31, 0
+    addi x29, x31, 1
+    lui x31, 0
+    addi x30, x31, 4
+    mul x31, x29, x30
+    add x28, x28, x31
+    sw x28, 208(x2)
+    lw x28, 208(x2)
+    lw x30, 0(x28)
+    sw x30, 212(x2)
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x7, -12(x2)
+    sw x8, -16(x2)
+    sw x9, -20(x2)
+    sw x18, -24(x2)
+    sw x19, -28(x2)
+    sw x20, -32(x2)
+    sw x21, -36(x2)
+    sw x22, -40(x2)
+    sw x23, -44(x2)
+    sw x24, -48(x2)
+    sw x25, -52(x2)
+    sw x26, -56(x2)
+    sw x27, -60(x2)
+    addi x2, x2, -68
+    sw x3, -8(x2)
+    lw x28, 280(x2)
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, println_i32.real_entry
+    addi x2, x2, 68
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x7, -12(x2)
+    lw x8, -16(x2)
+    lw x9, -20(x2)
+    lw x18, -24(x2)
+    lw x19, -28(x2)
+    lw x20, -32(x2)
+    lw x21, -36(x2)
+    lw x22, -40(x2)
+    lw x23, -44(x2)
+    lw x24, -48(x2)
+    lw x25, -52(x2)
+    lw x26, -56(x2)
+    lw x27, -60(x2)
+    addi x28, x27, 0
+    addi x29, x2, 216
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    lw x29, 172(x2)
+    addi x28, x2, 216
+    lui x31, 0
+    addi x30, x31, 20
+    jal x31, internal.memcpy
+    lw x28, 172(x2)
+    lui x31, 0
+    addi x29, x31, 4
+    add x28, x28, x29
+    sw x28, 236(x2)
+    lw x28, 236(x2)
+    lw x30, 0(x28)
+    sw x30, 240(x2)
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x7, -12(x2)
+    sw x8, -16(x2)
+    sw x9, -20(x2)
+    sw x18, -24(x2)
+    sw x19, -28(x2)
+    sw x20, -32(x2)
+    sw x21, -36(x2)
+    sw x22, -40(x2)
+    sw x23, -44(x2)
+    sw x24, -48(x2)
+    sw x25, -52(x2)
+    sw x26, -56(x2)
+    sw x27, -60(x2)
+    addi x2, x2, -68
+    sw x3, -8(x2)
+    lw x28, 308(x2)
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, println_i32.real_entry
+    addi x2, x2, 68
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x7, -12(x2)
+    lw x8, -16(x2)
+    lw x9, -20(x2)
+    lw x18, -24(x2)
+    lw x19, -28(x2)
+    lw x20, -32(x2)
+    lw x21, -36(x2)
+    lw x22, -40(x2)
+    lw x23, -44(x2)
+    lw x24, -48(x2)
+    lw x25, -52(x2)
+    lw x26, -56(x2)
+    lw x27, -60(x2)
+    lw x28, 172(x2)
+    lui x31, 0
+    addi x29, x31, 8
+    add x28, x28, x29
+    sw x28, 244(x2)
+    lw x28, 244(x2)
+    lw x30, 0(x28)
+    sw x30, 248(x2)
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x7, -12(x2)
+    sw x8, -16(x2)
+    sw x9, -20(x2)
+    sw x18, -24(x2)
+    sw x19, -28(x2)
+    sw x20, -32(x2)
+    sw x21, -36(x2)
+    sw x22, -40(x2)
+    sw x23, -44(x2)
+    sw x24, -48(x2)
+    sw x25, -52(x2)
+    sw x26, -56(x2)
+    sw x27, -60(x2)
+    addi x2, x2, -68
+    sw x3, -8(x2)
+    lw x28, 316(x2)
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, println_i32.real_entry
+    addi x2, x2, 68
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x7, -12(x2)
+    lw x8, -16(x2)
+    lw x9, -20(x2)
+    lw x18, -24(x2)
+    lw x19, -28(x2)
+    lw x20, -32(x2)
+    lw x21, -36(x2)
+    lw x22, -40(x2)
+    lw x23, -44(x2)
+    lw x24, -48(x2)
+    lw x25, -52(x2)
+    lw x26, -56(x2)
+    lw x27, -60(x2)
+    lw x28, 172(x2)
+    lui x31, 0
+    addi x29, x31, 0
+    add x28, x28, x29
+    sw x28, 252(x2)
+    lw x28, 252(x2)
+    lw x30, 0(x28)
+    sw x30, 256(x2)
+    sw x5, -4(x2)
+    sw x6, -8(x2)
+    sw x7, -12(x2)
+    sw x8, -16(x2)
+    sw x9, -20(x2)
+    sw x18, -24(x2)
+    sw x19, -28(x2)
+    sw x20, -32(x2)
+    sw x21, -36(x2)
+    sw x22, -40(x2)
+    sw x23, -44(x2)
+    sw x24, -48(x2)
+    sw x25, -52(x2)
+    sw x26, -56(x2)
+    sw x27, -60(x2)
+    addi x2, x2, -68
+    sw x3, -8(x2)
+    lw x28, 324(x2)
+    addi x12, x28, 0
+    addi x3, x2, -8
+    jal x1, println_i32.real_entry
+    addi x2, x2, 68
+    lw x5, -4(x2)
+    lw x6, -8(x2)
+    lw x7, -12(x2)
+    lw x8, -16(x2)
+    lw x9, -20(x2)
+    lw x18, -24(x2)
+    lw x19, -28(x2)
+    lw x20, -32(x2)
+    lw x21, -36(x2)
+    lw x22, -40(x2)
+    lw x23, -44(x2)
+    lw x24, -48(x2)
+    lw x25, -52(x2)
+    lw x26, -56(x2)
+    lw x27, -60(x2)
+    jal x0, rx_source_main.return
+rx_source_main.return:
+    addi x2, x2, 272
+    lw x3, -8(x2)
+    lw x1, -4(x2)
+    jalr x0, 0(x1)
+internal.memcpy:
+    lw a1, 0(t3)
+    sw a1, 0(t4)
+    addi t3, t3, 4
+    addi t4, t4, 4
+    addi t5, t5, -4
+    beq t5, x0, internal.memcpy.ret
+    jal x0, internal.memcpy
+internal.memcpy.ret:
+    jalr x0, 0(t6)

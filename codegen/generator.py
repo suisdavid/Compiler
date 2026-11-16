@@ -82,6 +82,8 @@ class Generator:
 
         self.arithmeticOps=['add','sub','mul','and','or','xor','shl','lshr','ashr','sdiv','udiv','srem','urem']
     def Emit(self,opcode:int,rd:int,r1:int,r2:int=0,label:str=None):
+        if opcode==Opcode.LUI:
+            r1%=(1<<20)
         self.ops.append(Op(opcode=opcode,rd=rd,r1=r1,r2=r2,label=label))
 
     def GetStackOffset(self,offset:int,sp:bool=True)->tuple[int,int]:#non-negative offset to rsp/rbp, returns (rs1,imm)
@@ -169,6 +171,7 @@ class Generator:
         if pos.reg:
             if force:
                 self.Emit(Opcode.ADDI,rd,pos.id,0)
+                return rd
             else:
                 return pos.id
         r1,imm=self.GetStackOffset(pos.id) if pos.id>=0 else self.GetStackOffset(-pos.id,False)
@@ -450,7 +453,7 @@ class Generator:
                     base=allocator.allocate(op[4])
                     idx=int(op[-1])
                     if pos.reg:
-                        r1,imm=self.GetStackOffset(base.id+idx*4,0,True) if base.id>=0 else self.GetStackOffset(-base.id+idx*4,0,False)
+                        r1,imm=self.GetStackOffset(base.id+idx*4,True) if base.id>=0 else self.GetStackOffset(-base.id+idx*4,False)
                         self.Emit(Opcode.LW,pos.id,r1,imm)
                     else: 
                         self.LoadStackOffset(base.id+idx*4,0,True) if base.id>=0 else self.LoadStackOffset(-base.id+idx*4,0,False)
@@ -561,10 +564,10 @@ class Generator:
         else:
             rd=util.regMap['t3']
             if offset%4096>2048:
-                prev_ops.append(Op(Opcode.LUI,rd,-((offset>>12)+1)))
+                prev_ops.append(Op(Opcode.LUI,rd,(-((offset>>12)+1))%(1<<20)))
                 offset=4096-offset%4096
             else:
-                prev_ops.append(Op(Opcode.LUI,rd,-(offset>>12)))
+                prev_ops.append(Op(Opcode.LUI,rd,(-(offset>>12))%(1<<20)))
                 offset=-(offset%4096)
             prev_ops.append(Op(Opcode.ADDI,rd,rd,offset))
             prev_ops.append(Op(Opcode.ADD,sp,sp,rd))

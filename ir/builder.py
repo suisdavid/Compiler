@@ -944,7 +944,7 @@ class Builder:
                     ret_val=self.GenTempName()
                     left=self.GenTempName()
                     unionType=util.GetAllocType(expression.retType)
-                    self.block+=f'  {ret_val} = phi {unionType} [{type0.identifier}, %{new_then_block}], [{type1.identifier}, %{new_else_block}]\n    {left} = alloca {unionType}\n    store {unionType} {ret_val}, ptr {left}\n'
+                    self.block+=f'  {ret_val} = phi {unionType} [ {type0.identifier}, %{new_then_block} ], [ {type1.identifier}, %{new_else_block} ]\n    {left} = alloca {unionType}\n    store {unionType} {ret_val}, ptr {left}\n'
                     self.phiMap[type0.identifier]=ret_val
                     self.phiMap[type1.identifier]=ret_val
                     return IRType(type=util.GetIRType(expression.retType),identifier=ret_val,left=left),after_block

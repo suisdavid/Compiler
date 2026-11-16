@@ -1,15 +1,15 @@
 
 Exit code: 0
-Total cycles: 10385
-Instruction parsed: 221
+Total cycles: 35547
+Instruction parsed: 632
 Instruction counts:
-# simple   = 111
-# mul      = 0
+# simple   = 489
+# mul      = 5
 # div      = 0
-# mem      = 153
-# branch   = 12
-# jump     = 26
-# jalr     = 7
+# mem      = 527
+# branch   = 64
+# jump     = 104
+# jalr     = 20
 # libcMem  = 0
-# libcIO   = 6
+# libcIO   = 10
 # libcOp   = 0

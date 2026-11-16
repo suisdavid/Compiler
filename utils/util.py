@@ -80,6 +80,7 @@ class Util:
             return self.SIZE[type]
 
     def GetIRAllocSize(self,type:str)->int:#everything is multiple of 4, easy to store in RISC_V
+        type = type.strip()
         if type in ["ptr","i32","i1"]:
             return 4
         elif type=='()':
