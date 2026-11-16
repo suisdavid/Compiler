@@ -7,7 +7,7 @@ from utils.util import util
 class Generator:
     class Allocator: #for register allocating
         def __init__(self,phiMap:dict[str,str]):
-            self.in_use=[0]*(util.regNum+util.paramNum)
+            self.in_use=[0]*32
             self.stk_offset=0
             self.rbp_offset=8#for rbp_addr and ret_addr
             self.varpos={}#varName to position(Position)
@@ -16,6 +16,13 @@ class Generator:
         def addUnit(self,varName:str):
             self.varpos[varName]=Position(reg=False,id=0,const=True)
 
+        def find_usable_reg(self)->int:
+            for name in util.useregs:
+                idx=util.regMap[name]
+                if self.in_use[idx]==0:
+                    return idx
+            return -1 
+        
         def allocate(self,varName:str,varSize:int=4,is_param:bool=False)->Position:
             if not varName.startswith("%"): #instant number
                 if varName=='true':
@@ -32,18 +39,18 @@ class Generator:
                 return pos
             else:
                 if is_param==True:
-                    if varSize<=4 and 0 in self.in_use[util.regNum:]:
-                        idx=self.in_use[util.regNum:].index(0)+util.regNum
+                    if varSize<=4 and 0 in self.in_use[util.paramStart:util.paramStart+util.paramNum]:
+                        idx=self.in_use[util.paramStart:].index(0)+util.paramStart
                         self.in_use[idx]=1
-                        self.varpos[varName]=Position(reg=True,id=util.regMap[util.useregs[idx]])
+                        self.varpos[varName]=Position(reg=True,id=idx)
                     else:
                         self.rbp_offset+=varSize
                         self.varpos[varName]=Position(reg=False,id=-(self.rbp_offset-varSize))#<0 indicates rbp offset
                 else:
-                    if varSize<=4 and 0 in self.in_use[:util.regNum]:
-                        idx=self.in_use.index(0)
+                    idx=self.find_usable_reg()
+                    if varSize<=4 and idx!=-1:
                         self.in_use[idx]=1
-                        self.varpos[varName]=Position(reg=True,id=util.regMap[util.useregs[idx]])
+                        self.varpos[varName]=Position(reg=True,id=idx)
                     else:
                         self.stk_offset+=varSize
                         self.varpos[varName]=Position(reg=False,id=self.stk_offset-varSize)#>=0 indicates rsp offset
@@ -54,9 +61,12 @@ class Generator:
             if pos and pos.reg:
                 self.in_use[pos.id]=0
 
+        def check_free(self):#check whether some registers can be freed
+            pass
+
     def __init__(self,functions:list[FunctionDescriptions],output_path:str):
         self.functions=functions
-        self.reservedFunctionName=["print_i32","println_i32","get_i32","__rx_alloc"]
+        self.reservedFunctionName=["main","print_i32","println_i32","get_i32","__rx_alloc"]
         self.functions.append(FunctionDescriptions(identifier="print_i32",param_types=["i32"],param_num=1,ret_size=0,block=[]))
         self.functions.append(FunctionDescriptions(identifier="println_i32",param_types=["i32"],param_num=1,ret_size=0,block=[]))
         self.functions.append(FunctionDescriptions(identifier="get_i32",param_types=[],param_num=0,ret_size=4,block=[]))
@@ -68,7 +78,7 @@ class Generator:
         self.callOffset={}#offset needed for passing parameters
         self.gen=[]
 
-        self.arithemticOps=['add','sub','mul','and','or','xor','shl','lshr','ashr','sdiv','udiv','srem','urem']
+        self.arithmeticOps=['add','sub','mul','and','or','xor','shl','lshr','ashr','sdiv','udiv','srem','urem']
     def Emit(self,opcode:int,rd:int,r1:int,r2:int=0,label:str=None):
         self.ops.append(Op(opcode=opcode,rd=rd,r1=r1,r2=r2,label=label))
 
@@ -164,15 +174,16 @@ class Generator:
         if rd.reg:
             self.Emit(opcode,rd.id,r1,r2)
         else:
-            self.Emit(opcode,util.regMap['t3'],r1,r2)
-            r1,imm=self.GetStackOffset(rd.id)
-            self.Emit(Opcode.SW,util.regMap['t3'],r1,imm)#store i32
+            r0=util.regMap[util.tempregs[0]]
+            self.Emit(opcode,r0,r1,r2)
+            r1,imm=self.GetStackOffset(rd.id,True) if rd.id>=0 else self.GetStackOffset(-rd.id,False)
+            self.Emit(Opcode.SW,r0,r1,imm)#store i32
 
     def Mov(self,new_pos:Position,prev_pos:Position):#Mov four bytes from prev_pos to new_pos
         self.ArithmeticEmit(Opcode.ADDI,new_pos,self.PutInReg(prev_pos),0)
 
     def Call(self,caller:FunctionDescriptions,callee:str,paramList:list[tuple[int,str]],retval:str=None,retsize:int=0):
-        #step 1: calculate the conflicting param registers
+        #step 1: calculate the conflicting local and param registers
         conflict=[]
         caller_allocator=self.functionAllocators[caller.identifier]
         callee_allocator=self.functionAllocators[callee]
@@ -180,11 +191,10 @@ class Generator:
         gp=util.regMap['gp']
         ra=util.regMap['ra']
         a0=util.regMap['a0']
-        for i in range(caller.param_num):
-            pos=caller_allocator.varpos.get(f"%param{i+1}")
-            if pos.reg and callee_allocator.in_used[pos.id]:
-                conflict.append(pos.id)
-                self.Emit(Opcode.SW,pos.id,sp,len(conflict)*(-4))
+        for i in range(32):
+            if caller_allocator.in_use[i]:
+                conflict.append(i)
+                self.Emit(Opcode.SW,i,sp,len(conflict)*(-4))
         offset=len(conflict)*4+self.callOffset[callee]
         self.Add(sp,-offset)
         self.Emit(Opcode.SW,gp,sp,-8)#store previous rbp
@@ -195,9 +205,9 @@ class Generator:
             prev_pos=caller_allocator.allocate(name)
             new_pos=callee_allocator.varpos.get(f"%param{i+1}")
             if new_pos.reg==False:#updated rsp effect
-                new_pos.id=-new_pos.id-8
+                new_pos=Position(reg=False,id=-new_pos.id)
             if prev_pos.reg==False and prev_pos.const==False and prev_pos.id>=0:#updated rsp effect
-                prev_pos.id+=offset
+                prev_pos=Position(reg=False,id=prev_pos.id+offset)
 
             if size==0:
                 continue
@@ -228,8 +238,8 @@ class Generator:
             if retsize==4:#passed with a0
                 self.Mov(pos,Position(reg=True,id=a0))
             else: #passed with stack
-                self.LoadStackOffset(pos.id,0,True)#must be allocated on stack
-                self.LoadStackOffset(-offset,1,True)
+                self.LoadStackOffset(pos.id,1,True)#must be allocated on stack
+                self.LoadStackOffset(-offset,0,True)
                 self.LoadConst(retsize,2)
                 self.Emit(Opcode.JAL,util.regMap['t6'],0,0,"internal.memcpy")
 
@@ -247,7 +257,7 @@ class Generator:
         if function.ret_size>4:
             allocator.allocate(f"%param0",function.ret_size,True)#retval
         for i in range(function.param_num):
-            allocator.allocate(f"%param{i+1}",util.GetAllocSize(function.param_types[i]),True)
+            allocator.allocate(f"%param{i+1}",util.GetIRAllocSize(function.param_types[i]),True)
         self.functionAllocators[function.identifier]=allocator
         self.callOffset[function.identifier]=allocator.rbp_offset
 
@@ -257,6 +267,9 @@ class Generator:
         allocator=self.functionAllocators[identifier]
         for op in function.block:
             op=list(filter(lambda x: x!='', op.replace(',',' ').replace(" x ","x").split(' ')))#replace(" x ","x") is for handling array types
+            if len(op)==0:
+                continue
+            allocator.check_free()
             if op[0].startswith("%"):
                 opcode=op[2]
                 rd=op[0]
@@ -384,7 +397,7 @@ class Generator:
                     idx=allocator.allocate(op[-1])
                     if len(op)>8:#the first idx must be zero
                         if type.startswith("["):#array
-                            innerSize=util.GetAllocSize(util.GetArrayInfo(type)[0])
+                            innerSize=util.GetIRAllocSize(util.GetArrayInfo(type)[0])
                             r1=self.PutInReg(idx,1)
                             r2=self.LoadConst(innerSize,2)
                             r3=util.regMap[util.tempregs[3]]
@@ -394,7 +407,7 @@ class Generator:
                             r1=self.LoadConst(util.GetFieldOffset(type,idx.id))
                             self.ArithmeticEmit(Opcode.ADD,pos,r0,r1)
                     else:
-                        size=util.GetAllocSize(type)
+                        size=util.GetIRAllocSize(type)
                         r1=self.PutInReg(idx,1)
                         r2=self.LoadConst(size,2)
                         r3=util.regMap[util.tempregs[3]]
@@ -406,10 +419,15 @@ class Generator:
                     base=allocator.allocate(op[4])
                     r0=self.PutInReg(base)
                     idx=int(op[-1])
-                    self.ArithmeticEmit(Opcode.ADDI,pos,r0,idx*4)
+                    if idx!=0:
+                        r1=util.regMap[util.tempregs[1]]
+                        self.Emit(Opcode.ADDI,r1,r0,idx*4)
+                        self.Load(pos,r1)
+                    else:
+                        self.Load(pos,r0)
 
                 elif opcode=='alloca':
-                    size=util.GetAllocSize(op[3])
+                    size=util.GetIRAllocSize(op[3])
                     allocator.stk_offset+=size
                     offset=allocator.stk_offset
                     pos=allocator.allocate(op[0])
@@ -421,7 +439,7 @@ class Generator:
                         self.ArithmeticEmit(Opcode.ADD,pos,sp,self.LoadConst(offset,0))
 
                 elif opcode=='load':
-                    size=util.GetAllocSize(op[3])
+                    size=util.GetIRAllocSize(op[3])
                     if size==0:
                         allocator.addUnit(op[0])
                         continue
@@ -437,11 +455,11 @@ class Generator:
 
                 elif opcode=='call': #nonvoid call
                     retval=op[0]
-                    retsize=util.GetAllocSize(op[3])
+                    retsize=util.GetIRAllocSize(op[3])
                     funcName=op[4][1:-1]
                     paramList=[]
                     for i in range(5,len(op)-1,2):
-                        size=util.GetAllocSize(op[i])
+                        size=util.GetIRAllocSize(op[i])
                         name=op[i+1]
                         paramList.append((size,name))
                     self.Call(function,funcName,paramList,retval,retsize)#Call Function
@@ -459,7 +477,7 @@ class Generator:
                     self.Emit(Opcode.JAL,0,0,0,block)
 
             elif op[0]=='store':
-                size=util.GetAllocSize(op[1])
+                size=util.GetIRAllocSize(op[1])
                 if size==0:
                     allocator.addUnit(op[4])
                     continue
@@ -481,19 +499,17 @@ class Generator:
                 funcName=op[2][1:-1]
                 paramList=[]
                 for i in range(3,len(op)-1,2):
-                    size=util.GetAllocSize(op[i])
+                    size=util.GetIRAllocSize(op[i])
                     name=op[i+1]
                     paramList.append((size,name))
                 self.Call(function,funcName,paramList)
 
             elif op[0]=='ret':
-                retsize=util.GetAllocSize(op[1])
-                if retsize==0:
-                    continue
+                retsize=util.GetIRAllocSize(op[1])
                 retval=allocator.allocate(op[2])
-                if retsize==4:#pass with ra
-                    self.Mov(Position(reg=True,id=util.regMap['ra']),retval)
-                else:
+                if retsize==4:#pass with a0
+                    self.Mov(Position(reg=True,id=util.regMap['a0']),retval)
+                elif retsize>4:
                     self.LoadStackOffset(retval.id,0,True) if retval.id>=0 else self.LoadStackOffset(-retval.id,0,False)#must be allocated on stack
                     self.LoadStackOffset(8,1,False)
                     self.LoadConst(retsize,2)
@@ -616,11 +632,14 @@ class Generator:
             self.ops=[]
             self.Parse(function)
             self.gen.append(Function(identifier=function.identifier,ops=self.ops))
-        memcpy='''internal.memcpy:\n    lw a1, 0(t3)\n    sw a1, 0(t4)\n    addi t3, t3, 4\n    addi t4, t4, 4\n    addi t5, t4, -4\n    beq t5, x0, internal.memcpy.ret\n    jal x0, internal.memcpy\ninternal.memcpy.ret:\n    jalr x0, 0(t6)\n'''
+        memcpy='''internal.memcpy:\n    lw a1, 0(t3)\n    sw a1, 0(t4)\n    addi t3, t3, 4\n    addi t4, t4, 4\n    addi t5, t5, -4\n    beq t5, x0, internal.memcpy.ret\n    jal x0, internal.memcpy\ninternal.memcpy.ret:\n    jalr x0, 0(t6)\n'''
         #t3 for src, t4 for dest, t5 for size, t6 for ret_addr
 
         #output
+        with open("prefix.in","r") as f:
+            prefix=f.read()
         with open(self.output,"w") as f:
+            f.write(prefix)
             for each in self.gen:
                 self.Write(each,f)
             f.write(memcpy)

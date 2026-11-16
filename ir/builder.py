@@ -20,8 +20,6 @@ class Builder:
         self.StructDefinitions={}#structName(str)->IRStruct
         self.FunctionDefinitions={}#functionName(str)->IRFunction
         self.FunctionNewNames={}#functionName in checker->functionName in IR
-        self.CloneFunctions=[]#built specially for struct clone functions
-        self.EqualFunctions=[]#built specially for struct equal functions
         self.checker=checker#already done SemanticCheck
         self.output=output#output_path
         self.tempctr=0
@@ -1060,6 +1058,7 @@ class Builder:
             self.global_scope.register(name,IRType(type='#'+name,identifier=None))
 
         for structName in self.checker.StructOrder:
+            ####calculate struct size####
             struct=self.checker.StructDefinitions[structName]
             field_names=[]
             field_types=[]
@@ -1071,27 +1070,28 @@ class Builder:
                 delta=util.GetAllocSize(field_types[-1])
                 if delta!=1 and size%4!=0:
                     size+=4-size%4
-                size+=delta
                 field_offsets.append(size)
+                size+=delta
             if size%4!=0:
                 size+=4-size%4
             util.SIZE[structName]=size
             util.OFFSETS[structName]=field_offsets
             self.StructDefinitions[structName]=IRStruct(identifier=structName,field_names=field_names,field_types=field_types,size=size)
-            
+
+
+            ###Equal#####
             self.blockctr=self.tempctr=self.varctr=0
             functionName=f"Equal{structName}"
             length=len(field_names)
             temp=self.GenTempName()
-            type1=self.GenTempName()
-            type2=self.GenTempName()
+            type1='%param1'
+            type2='%param2'
             res=self.GenTempName()
             fail_block=self.GenBlockName()
             win_block=self.GenBlockName()
 
             block_name="entry"
-            s=f'''define i1 @{functionName}(ptr {type1}, ptr {type2}){{
-            entry:   
+            s=f'''entry:   
                 {temp} = alloca i1
                 store i1 true, ptr {temp}'''
             for i in range(length):
@@ -1115,18 +1115,20 @@ class Builder:
                     next_block=self.GenBlockName()
                     s+=news+f'   br i1 {val}, label %{next_block}, label %{fail_block}\n{next_block}:\n'
                     block_name=next_block
-            s+=f'''{win_block}:\n   {res} = load i1, ptr {temp}\n   ret i1 {res}\n}}\n'''
-            self.EqualFunctions.append(s)
+            s+=f'''{win_block}:\n   {res} = load i1, ptr {temp}\n   ret i1 {res}\n'''
+            
+            self.FunctionDefinitions[functionName]=IRFunction(identifier=functionName,retType='bool',param_names=["%param1","%param2"],param_types=[f"& {structName}",f"& {structName}"],block=util.prune(s),scope=None,body=None)
 
+
+            #####Clone#####
             self.blockctr=self.tempctr=self.varctr=0
             functionName=f"Clone{structName}"
-            origin=self.GenTempName()
+            origin='%param1'
             res=self.GenTempName()
             val=self.GenTempName()
             
             block_name='entry'
-            s=f'''define %{structName} @{functionName}(ptr {origin})\n{{    
-            entry:
+            s=f'''entry:
                 {res} = alloca %{structName}\n'''
             for i in range(length):
                 source=self.GenTempName()
@@ -1137,8 +1139,9 @@ class Builder:
                     {dest} = getelementptr %{structName}, ptr {res}, i32 0, i32 {i}\n'''
                 news,block_name=self.Clone(IRType(type=field_types[i],identifier=src,left=source),dest,block_name)
                 s+=news
-            s+=f'   {val} = load %{structName}, ptr {res}\n    ret %{structName} {val}\n}}\n'
-            self.CloneFunctions.append(s)
+            s+=f'   {val} = load %{structName}, ptr {res}\n    ret %{structName} {val}\n'
+
+            self.FunctionDefinitions[functionName]=IRFunction(identifier=functionName,retType=structName,param_names=["%param1"],param_types=[f"& {structName}"],block=util.prune(s),scope=None,body=None)
             if not self.checker.FunctionDefinitions.get(f'{structName}::clone'):
                 self.global_scope.register(f'{structName}::clone',IRType(type=f'#{structName}::clone',identifier=None))
     
@@ -1179,10 +1182,10 @@ class Builder:
                 param_types.append(util.GetIRType(func.params[i].type))
                 function_scope.register(func.paramNames[i],IRType(identifier=varname,type=param_types[-1]))
                 self.block+=self.BuildAndStore(varname,f"%param{paramctr}",param_types[-1])
-            self.FunctionDefinitions[newFuncName]=IRFunction(identifier=functionName,retType=util.GetIRType(func.returnType.type) if func.returnType else "()",param_names=param_names,param_types=param_types,block=self.block,scope=function_scope,body=func.body)
+            self.FunctionDefinitions[newFuncName]=IRFunction(identifier=newFuncName,retType=util.GetIRType(func.returnType.type) if func.returnType else "()",param_names=param_names,param_types=param_types,block=self.block,scope=function_scope,body=func.body)
 
         for newFuncName in self.FunctionDefinitions:
-            if newFuncName in ['print_i32','println_i32','get_i32']:
+            if newFuncName in ['print_i32','println_i32','get_i32'] or newFuncName.startswith("Clone") or newFuncName.startswith("Equal"):
                 continue
             self.tempctr=self.varctr=self.blockctr=0
             self.block="" 
@@ -1198,7 +1201,7 @@ class Builder:
             func.phiMap=self.phiMap
 
         #define main
-        self.FunctionDefinitions['main']=IRFunction(identifier=name,retType='i32',param_names=[],param_types=[],block='    call %Internal.Unit @rx_source_main( )\n    ret i32 0\n',scope=None,body=None)
+        self.FunctionDefinitions['main']=IRFunction(identifier='main',retType='i32',param_names=[],param_types=[],block='    call %Internal.Unit @rx_source_main( )\n    ret i32 0\n',scope=None,body=None)
         #output
         with open(self.output,"w") as f:
             f.write('target triple = "riscv32-unknown-unknown-elf"\n\ndeclare void @print_i32(i32)\ndeclare void @println_i32(i32)\ndeclare i32 @get_i32()\ndeclare ptr @__rx_alloc(i32, i32)\n\n')
@@ -1206,10 +1209,7 @@ class Builder:
             for structName in self.StructDefinitions:
                 description=", ".join([util.GetAllocType(field_type) for field_type in self.StructDefinitions[structName].field_types])
                 f.write(f"%{structName} = type{{ {description} }}\n\n")
-            for each in self.CloneFunctions:
-                f.write(util.prune(each)+'\n')
-            for each in self.EqualFunctions:
-                f.write(util.prune(each)+'\n')
+
             for functionName in self.FunctionDefinitions:
                 if functionName in ['print_i32','println_i32','get_i32']:
                     continue
