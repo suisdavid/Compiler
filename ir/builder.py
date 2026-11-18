@@ -64,7 +64,21 @@ class Builder:
         res=self.GenTempName()
         self.block+=f"    {res} = freeze %Internal.Unit zeroinitializer\n"
         return IRType(type="()",identifier=res)
-    
+
+    def PhiTrans(self,type:IRType)->IRType:#used specially for phiMap when type0 and type1 are pointers
+        if type.type.startswith("&") or type.type.startswith("Box<"):
+            temp=self.GenTempName()
+            self.block+=f'    {temp} = getelementptr i32, ptr {type.identifier}, i32 0\n'
+            return IRType(type=type.type,identifier=temp,left=type.left)
+        elif type.type!='^' and not type.identifier.startswith("%"):#immediate, used for phiMap
+            newvar=self.GenTempName()
+            if type.type=='bool':
+                self.block+=f'  {newvar} = add i1 {type.identifier}, 0\n'
+            else:
+                self.block+=f'  {newvar} = add i32 {type.identifier}, 0\n'
+            return IRType(type=type.type,identifier=newvar,left=type.left)
+        else:
+            return type
 
     def Dereference(self,type:IRType,cnt=1)->tuple[str,str]:#return s,tempname
         s=""
@@ -965,15 +979,7 @@ class Builder:
             if expression.has_never:
                 return IRType(type='^',identifier=None),block_name
             else:
-                if type.type!='^' and not type.identifier.startswith("%"):#immediate, used for phiMap
-                    newvar=self.GenTempName()
-                    if type.type=='bool':
-                        self.block+=f'  {newvar} = add i1 {type.identifier}, 0\n'
-                    else:
-                        self.block+=f'  {newvar} = add i32 {type.identifier}, 0\n'
-                    return IRType(type=type.type,identifier=newvar,left=type.left),block_name
-                else:
-                    return type,block_name    
+                return self.PhiTrans(type),block_name
 
 
         elif isinstance(expression,ast_nodes.NormalArrayExpresssion):

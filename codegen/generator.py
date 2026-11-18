@@ -457,7 +457,7 @@ class Generator:
                         self.Emit(Opcode.LW,pos.id,r1,imm)
                     else: 
                         self.LoadStackOffset(base.id+idx*4,0,True) if base.id>=0 else self.LoadStackOffset(-base.id+idx*4,0,False)
-                        self.Mov(pos,Position(reg=False,id=util.regMap[util.tempregs[0]]))
+                        self.Load(pos, util.regMap[util.tempregs[0]])
 
                 elif opcode=='alloca':
                     size=util.GetIRAllocSize(op[3])
